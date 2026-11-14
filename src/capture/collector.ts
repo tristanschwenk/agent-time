@@ -748,7 +748,7 @@ export class Collector {
   }
   private persistedHomeKey(date:string):string|undefined{
     const bounds=localDayBounds(date);if(Date.now()/1000<bounds.to)return;
-    try{const review=this.reviewData();return createHash('sha256').update(JSON.stringify([1,bounds,this.summaryOptions(),this.surfaces.countTaskCounters,this.store.projectionSignature(windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold)),review.decisions,review.splits,[...this.resources()],this.surfaces.countTaskCounters?this.reportedWork(date):[]])).digest('hex');}catch{return;}
+    try{const review=this.reviewData();return createHash('sha256').update(JSON.stringify([2,bounds,this.summaryOptions(),this.surfaces.countTaskCounters,this.store.projectionSignature(windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold)),review.decisions,review.splits,[...this.resources()],this.surfaces.countTaskCounters?this.reportedWork(date):[]])).digest('hex');}catch{return;}
   }
   versionedHomeResponse(date:string,maxAgeMs=0,since?:string){
     const key=this.persistedHomeKey(date),token=key?`h-${key.slice(0,60)}`:undefined;
