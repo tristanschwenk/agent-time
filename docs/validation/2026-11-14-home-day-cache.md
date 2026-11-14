@@ -52,6 +52,8 @@ Aucun changement de schéma, collecte, formule de temps, attribution, arrondi, f
 
 714 tests Node réussis, dont 13 nouveaux tests du cache et de l’interface. Vérifications ciblées : corrections externes, preuves tardives, compteurs actifs, expiration, fins futures, recul d’horloge, ressources, réglages, tailles limites, fallback et navigation concurrente. Build et typage réussis ; avertissement existant du bundle au-dessus de 500 Ko. Les deux implémentations du benchmark produisent les mêmes six résultats complets. Sidecars empaquetés construits ; smoke test du Collector avec Node embarqué 26.9 réussi sur un hit conditionnel de journée terminée.
 
+Revue indépendante finale : aucune anomalie critique, importante ou mineure. Le relecteur a rejoué les 13 tests ciblés, vérifié une suppression externe et comparé les compteurs sur 18 changements d’horloge dans les deux sens. Il n’a pas reproduit le benchmark volumineux ni la suite complète ; ces vérifications sont celles de l’exécutant. Les copies temporaires de bases créées pour cet audit ont été supprimées après mesure ; les originaux sont inchangés.
+
 ## Suite proposée
 
 Le premier affichage reste tributaire de la reconstruction. L’étape structurante est de conserver des périodes calculées et une réponse Home compacte, puis charger visites/outils/provenance à la demande. C’est un chantier distinct du cache, à valider avec les réducteurs actuels comme référence d’exactitude. La compaction du disque seule ne résout pas ce coût.
