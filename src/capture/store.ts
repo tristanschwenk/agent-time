@@ -9,7 +9,7 @@ import { validateEvent, type CaptureEvent } from './events.ts';
 import {humanDecisionSelection,type HumanDecision,type HumanSplit,type HumanDecisionSegment} from './human-review.ts';
 import {needsHeartbeat,observationKey,observationSignature,workerHeartbeatSeconds} from './observation-retention.ts';
 import {randomUUID} from 'node:crypto';
-import {readWindowEvents} from './summary-window.ts';
+import {readWindowEvents,type WindowBounds} from './summary-window.ts';
 
 export interface ManualNote {id:string;start:number;end:number;project:string;note:string;createdAt:number;}
 export interface ReviewAction {id:string;at:number;count:number;mode:'assigned'|'unassigned'|'clear'|'split';projectPath:string|null;undoneAt:number|null;canUndo:boolean;eventIds:string[];}
@@ -169,6 +169,23 @@ export class EventStore {
   taskReportEvidence(start:number,end:number):CaptureEvent[]{
     const reports=this.agentReports(start,end),read=this.db.prepare('SELECT payload FROM events WHERE event_id=?');
     return hydrateTaskStarts(reports,id=>{const row=read.get(id);return row?JSON.parse(String(row.payload)) as CaptureEvent:undefined;});
+  }
+  /** Only metadata used by this exact reader window; unrelated live samples do not age closed views. */
+  windowSignature(bounds:WindowBounds):string{
+    const activity=isPackedEventDatabase(this.db)?'activity_sample=0':"json_extract(payload,'$.kind')<>'activity' OR json_extract(payload,'$.source')<>'macos'";
+    const row=this.db.prepare(`SELECT count(*) n,coalesce(max(rowid),0) m FROM events WHERE observed_at>=? AND observed_at<? AND (observed_at>=? AND observed_at<? OR ${activity})`).get(bounds.readFrom,bounds.readTo,bounds.activityFrom,bounds.activityTo)!;
+    const terminals=this.db.prepare("SELECT count(*) n,coalesce(max(rowid),0) m FROM events INDEXED BY events_terminal_handle WHERE json_extract(payload,'$.kind')='terminal'").get()!;
+    return `${row.n}:${row.m}:${terminals.n}:${terminals.m}:${this.incrementalSafetyRevision()}`;
+  }
+  /** Existing indexes let counter reads notice declarations/closures without decoding unrelated events. */
+  reportedEvidenceRevision():string{
+    const reports=this.db.prepare("SELECT count(*) n,coalesce(max(rowid),0) m FROM events INDEXED BY events_source_recent WHERE json_extract(payload,'$.source')='agent_report'").get()!;
+    const ends=this.db.prepare("SELECT count(*) n,coalesce(max(rowid),0) m FROM events INDEXED BY events_session_ends_at WHERE json_extract(payload,'$.kind')='session_end'").get()!;
+    return `${reports.n}:${reports.m}:${ends.n}:${ends.m}:${this.incrementalSafetyRevision()}`;
+  }
+  nextSessionEndAt(from:number):number{
+    const row=this.db.prepare("SELECT observed_at at FROM events INDEXED BY events_session_ends_at WHERE json_extract(payload,'$.kind')='session_end' AND observed_at>=? ORDER BY observed_at LIMIT 1").get(from);
+    return row?Number(row.at):Infinity;
   }
   lastEventRowid():number{return Number(this.db.prepare('SELECT COALESCE(MAX(rowid),0) rowid FROM events').get()?.rowid||0);}
   eventsAfterRowid(rowid:number):Array<{rowid:number;event:CaptureEvent}>{

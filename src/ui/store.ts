@@ -1,3 +1,4 @@
+import {SummaryPageCache} from './summary-page-cache.ts';
 import {requestReviewFocus} from './review-workspace.ts';
 import {createWorkspaceScope} from './workspace-scope.ts';
 import {emptyActivityFilters,filterActivity,type ActivityFilters} from '../capture/activity-filter.ts';
@@ -226,6 +227,7 @@ function createStore() {
     summaryFetchedAt = 0;
 
   /** Collector version of the summary on screen; polls skip the download while it is current. */
+  const summaryPagesCache=new SummaryPageCache();
   let summaryToken: string | undefined;
   let reportedWorkInflight: Promise<void> | undefined;
   function storeSummary(next: Summary, date: string) {
@@ -250,8 +252,11 @@ function createStore() {
     // While visible but unfocused, a full summary every minute is enough.
     const due = !background || summaryKey.split('|')[0] !== date || Date.now() - summaryFetchedAt >= 60_000;
     try {
+      const restore=summaryKey.split('|')[0]!==date?summaryPagesCache.get(date):undefined;
+      const cached=restore?await restore:undefined;
+      if(revision!==summaryRevision||date!==selectedDate.value)return;
       const nextRequest = due
-        ? transport.summarySince(date, background, summaryKey.split('|')[0] === date ? summaryToken : undefined)
+        ? transport.summarySince(date, background, summaryKey.split('|')[0] === date ? summaryToken : cached?.token)
         : Promise.resolve(null);
       if (!reportedWorkInflight) reportedWorkInflight = reportedWorkTransport.list(date).then(reports => {
         if (revision === summaryRevision && date === selectedDate.value) reportedWork.value = markRaw(reports);
@@ -259,12 +264,14 @@ function createStore() {
       const next = await nextRequest;
       if (revision !== summaryRevision || date !== selectedDate.value) return;
       if (next && 'unchanged' in next) {
+        if(cached){storeSummary(cached.value,date);summaryToken=next.token;}
         summaryFetchedAt = Date.now();
         summaryLoaded.value = true;
       } else if (next) {
         const { token, ...rest } = next;
         storeSummary(rest as Summary, date);
         summaryToken = token;
+        if(token)void summaryPagesCache.put(date,token,rest as Summary);
       }
       pollError.value = '';
     } catch (cause) {
@@ -431,6 +438,7 @@ function createStore() {
 
   /** Apply the summary a review action returned, or refetch when it is for another day. */
   function applyReviewedSummary(next: Summary, date: string) {
+    summaryPagesCache.clear();
     reviewRevision.value++;
     const reportedDate = (next as Summary & { date?: unknown }).date;
     if (date !== selectedDate.value || (typeof reportedDate === 'string' && reportedDate !== date)) {

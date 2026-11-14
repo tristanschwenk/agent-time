@@ -1,3 +1,4 @@
+import {DaySnapshotCache} from './day-snapshot-cache.ts';
 import {BillingReports} from './billing-worker.ts';
 import {BillingStore,validateBillingProject} from './billing-store.ts';
 import {billingProjects,billingForProject,billingReportHistory,validateBillingRequest} from './billing-service.ts';
@@ -94,6 +95,9 @@ export class Collector {
   private reviewCache:{revision:string;decisions:HumanDecision[];splits:HumanSplit[]}|undefined;
   private periodProgress=new PeriodProgress();
   periodReviewProgress(id:string){return this.periodProgress.get(id);}
+  private viewSnapshots=new DaySnapshotCache();
+  private reportEvidence=new Map<string,{revision:string;events:CaptureEvent[];ends:Map<string,number>;upper:number;expires:number;bytes:number}>();
+  private reportEvidenceStamp?:{revision:string;value:string};
   private decorated=new Map<string,{key:string;value:Summary;day?:Summary;bytes?:number}>();
   private usageReader:UsageReader;private hookInstallation:HookInstallation;private mcpInstallation:McpInstallation;private claudeStatusLine:ClaudeStatusLineInstallation;
   private hookStatusCache:{at:number;value:HookInstallationStatus}|undefined;
@@ -481,7 +485,7 @@ export class Collector {
     return snapshot;
   }
   private dayReviewSnapshot(date:string){
-    const day=this.daySummary(date),groups=groupHumanReview(day.intervals),pending=groups.filter(group=>['unmatched','conflict'].includes(humanReviewState(group))),captured=groups.filter(group=>humanReviewState(group)==='captured'),unmatched=pending.filter(group=>humanReviewState(group)==='unmatched'),conflicts=pending.filter(group=>humanReviewState(group)==='conflict'),gaps=unobservedGaps(day.intervals);
+    const day=this.viewedDaySummary(date).value,groups=groupHumanReview(day.intervals),pending=groups.filter(group=>['unmatched','conflict'].includes(humanReviewState(group))),captured=groups.filter(group=>humanReviewState(group)==='captured'),unmatched=pending.filter(group=>humanReviewState(group)==='unmatched'),conflicts=pending.filter(group=>humanReviewState(group)==='conflict'),gaps=unobservedGaps(day.intervals);
     const notes=this.store.manualNotes(date);
     // The fingerprint ignores interval order: a bounded day window can list the
     // same intervals in another order than a replay of the whole history did.
@@ -562,7 +566,7 @@ export class Collector {
     const pending=this.websiteResolver.resolve(url,known,recent).then(result=>{if(result&&this.running&&revision===this.websiteRevision){if(this.websiteMatches.get(key)?.projectPath!==result.projectPath)this.websiteApplied.delete(key);this.websiteMatches.set(key,result);if(this.websiteMatches.size>200){const oldest=[...this.websiteMatches].sort((a,b)=>a[1].observedAt-b[1].observedAt).slice(0,this.websiteMatches.size-200);for(const [oldKey] of oldest){this.websiteMatches.delete(oldKey);this.websiteApplied.delete(oldKey);}}}}).catch(()=>{/* Keep unverified website activity unassigned. */}).finally(()=>{if(this.websitePending.get(key)===pending)this.websitePending.delete(key);});
     this.websitePending.set(key,pending);
   }
-  private invalidateSummaries(){this.summaryCache=undefined;this.days.invalidate();this.decorated.clear();this.reviewCache=undefined;this.knownWorkspaceCache=undefined;}
+  private invalidateSummaries(){this.summaryCache=undefined;this.viewSnapshots.clear();this.days.invalidate();this.decorated.clear();this.reviewCache=undefined;this.knownWorkspaceCache=undefined;}
   updateSettings(patch:Partial<CaptureSettings>){
     validateSettings(patch);
     if(this.stopping)throw new Error('Capture is stopping');
@@ -734,10 +738,32 @@ export class Collector {
    */
   summaryForDate(date:string,maxAgeMs=0):Summary{return this.daySummary(date,maxAgeMs);}
   versionedSummary(date:string,maxAgeMs=0,since?:string):Summary&{token:string}|{unchanged:true;token:string}{
-    const summary=this.daySummary(date,maxAgeMs);
+    const snapshot=this.viewedDaySummary(date,maxAgeMs);
+    return since===snapshot.token?{unchanged:true,token:snapshot.token}:{...snapshot.value,token:snapshot.token};
+  }
+  private tokenForSummary(summary:Summary){
     let token=this.summaryTokens.get(summary);
     if(!token){token=`${this.summaryEpoch}-${++this.summaryTokenCount}`;this.summaryTokens.set(summary,token);}
-    return since===token?{unchanged:true,token}:{...summary,token};
+    return token;
+  }
+  private releaseViewRaw(date:string){this.days.release(date);this.decorated.delete(date);this.derivedMemo=undefined;}
+  private viewedDaySummary(date:string,maxAgeMs=0):{value:Summary;token:string}{
+    const bounds=localDayBounds(date),closed=Date.now()/1000>=bounds.to;
+    if(!closed){const value=this.daySummary(date,maxAgeMs);return {value,token:this.tokenForSummary(value)};}
+    const window=windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold);
+    const prefix=()=>JSON.stringify([bounds,this.summaryOptions(),this.revision,this.store.windowSignature(window)]);
+    const before=prefix(),resources=this.resources(),reports=this.surfaces.countTaskCounters?this.reportedWork(date):[];
+    const key=(resources:Map<string,ReportedResource>,counters:string)=>before+':'+createHash('sha256').update(JSON.stringify([...resources])).update(counters).digest('hex');
+    const hit=this.viewSnapshots.get(date,key(resources,JSON.stringify(reports)));
+    if(hit)return hit;
+    // A changed dependency must not reuse a 15-second raw memo with old evidence.
+    this.releaseViewRaw(date);
+    const value=this.daySummary(date,0),token=this.tokenForSummary(value),memo=this.derivedMemo;
+    // Never label an old calculation with evidence that changed during its read.
+    if(memo?.value===value&&before===prefix()&&this.viewSnapshots.put(date,key(memo.resources,memo.counters),value,token)){
+      this.releaseViewRaw(date);
+    }
+    return {value,token};
   }
   private billingReports?:BillingReports;
   billingReportProgress(id:string){return this.billingReports?.progress(id)||null;}
@@ -750,10 +776,23 @@ export class Collector {
     last.setDate(last.getDate()+1);
     const start=first.getTime()/1000,end=last.getTime()/1000;
     const now=Date.now()/1000;
-    const events=this.store.taskReportEvidence(start-86400,end+43200);
-    // Session endings only close counters; context-only/empty days need no scan.
-    const ends=events.some(event=>event.kind==='task_start')?this.store.sessionEnds(start-86400,Math.max(end,now)+60):new Map<string,number>();
-    return reportedWorkForDay(events,start,end,now,ends);
+    const revision=this.store.revision();
+    if(this.reportEvidenceStamp?.revision!==revision)this.reportEvidenceStamp={revision,value:this.store.reportedEvidenceRevision()};
+    const stamp=this.reportEvidenceStamp.value,upper=Math.max(end,now)+60;
+    let entry=this.reportEvidence.get(date);
+    if(!entry||entry.revision!==stamp||upper<entry.upper||now>=entry.expires){
+      const events=this.store.taskReportEvidence(start-86400,end+43200),hasCounters=events.some(event=>event.kind==='task_start');
+      const ends=hasCounters?this.store.sessionEnds(start-86400,upper):new Map<string,number>();
+      const expires=hasCounters?this.store.nextSessionEndAt(upper)-60:Infinity;
+      entry={revision:stamp,events,ends,upper,expires,bytes:estimatedBytes({events,ends:[...ends]})};
+      this.reportEvidence.delete(date);
+      if(entry.bytes<=8*1024*1024){
+        this.reportEvidence.set(date,entry);
+        while(this.reportEvidence.size>6||[...this.reportEvidence.values()].reduce((n,e)=>n+e.bytes,0)>8*1024*1024)this.reportEvidence.delete(this.reportEvidence.keys().next().value!);
+      }
+    }else{this.reportEvidence.delete(date);this.reportEvidence.set(date,entry);}
+    // Only SQL evidence is cached: open ends, leases and interrupted status use this read's clock.
+    return reportedWorkForDay(entry.events,start,end,now,new Map(entry.ends));
   }
   /**
    * Stop an agent-reported timer from the app, for timers an agent left open.
