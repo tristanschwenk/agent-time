@@ -1,0 +1,372 @@
+{
+  "date": "2026-11-14",
+  "implementationCommit": "5978f88",
+  "baselineCommit": "817942b",
+  "fixture": {
+    "observations": 1512772,
+    "bytes": 662126592,
+    "countTaskCounters": true,
+    "capturePaused": true
+  },
+  "method": {
+    "backend": "One Collector per implementation; sequence 07,12,06,12,07,07 November; new process, OS file cache not purged; synchronous versionedSummary + actual JSON encoding, no client parsing or retained result graphs. Peak RSS is cumulative.",
+    "ui": "Local instrumented Vite preview, Chrome IAB 659x965. From selected-day watcher to two animation frames after summary loaded; first paint mark per navigation only. API fetch/response time also recorded. Native WebView rendering was not benchmarked."
+  },
+  "ui": [
+    {
+      "date": "2026-11-07",
+      "visit": "first",
+      "readyMs": 3561.1,
+      "responseMs": 3138.6,
+      "payloadBytes": 12184573
+    },
+    {
+      "date": "2026-11-12",
+      "visit": "first",
+      "readyMs": 3340.1,
+      "responseMs": 2047.2,
+      "payloadBytes": 13701112
+    },
+    {
+      "date": "2026-11-06",
+      "visit": "first",
+      "readyMs": 3084.2,
+      "responseMs": 2704,
+      "payloadBytes": 9276041
+    },
+    {
+      "date": "2026-11-12",
+      "visit": "revisit",
+      "readyMs": 1842.8,
+      "responseMs": 1314.6,
+      "payloadBytes": 13701112
+    },
+    {
+      "date": "2026-11-07",
+      "visit": "revisit",
+      "readyMs": 3775.6,
+      "responseMs": 3352,
+      "payloadBytes": 12184573
+    }
+  ],
+  "uiJsHeapSamplesBytes": [
+    96598830,
+    97031069,
+    88050159,
+    96997914,
+    95337356,
+    97998658
+  ],
+  "backend": {
+    "baseline": [
+      {
+        "date": "2026-11-07",
+        "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-07"
+        ],
+        "computeMs": 4137.856291,
+        "serializeMs": 38.02508399999988,
+        "payloadBytes": 12184518,
+        "rssMiB": 525.21875,
+        "peakRssMiB": 525.21875,
+        "heapUsedMiB": 240.70501708984375,
+        "intervals": 26140,
+        "sessions": 184,
+        "stages": {
+          "windowEvents": 1168.7651660000001,
+          "window": 1528.046375,
+          "resources": 344.2248330000002,
+          "reportedWork": 768.5613749999998,
+          "daySummary": 4137.813042
+        }
+      },
+      {
+        "date": "2026-11-12",
+        "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-12"
+        ],
+        "computeMs": 1550.5611250000002,
+        "serializeMs": 60.98866699999962,
+        "payloadBytes": 13701057,
+        "rssMiB": 618.65625,
+        "peakRssMiB": 618.65625,
+        "heapUsedMiB": 277.33768463134766,
+        "intervals": 33383,
+        "sessions": 290,
+        "stages": {
+          "windowEvents": 967.9549590000006,
+          "window": 1423.4763750000002,
+          "resources": 0.006124999999883585,
+          "reportedWork": 70.80820800000038,
+          "daySummary": 1550.5502500000002
+        }
+      },
+      {
+        "date": "2026-11-06",
+        "resultSha256": "5624baae3a38dc811e90d4d1bac1f6e6f0e03c619e57ac5e339528f8996847c5",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-06"
+        ],
+        "computeMs": 2882.9091670000007,
+        "serializeMs": 41.6461249999993,
+        "payloadBytes": 9275986,
+        "rssMiB": 633.9375,
+        "peakRssMiB": 677.234375,
+        "heapUsedMiB": 129.56096649169922,
+        "intervals": 21653,
+        "sessions": 365,
+        "stages": {
+          "windowEvents": 795.4828750000006,
+          "window": 1135.55825,
+          "resources": 0.005041000000346685,
+          "reportedWork": 710.6717499999995,
+          "daySummary": 2882.878417
+        }
+      },
+      {
+        "date": "2026-11-12",
+        "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-12"
+        ],
+        "computeMs": 1222.2225830000007,
+        "serializeMs": 68.42104199999994,
+        "payloadBytes": 13701057,
+        "rssMiB": 674.328125,
+        "peakRssMiB": 677.234375,
+        "heapUsedMiB": 333.85992431640625,
+        "intervals": 33383,
+        "sessions": 290,
+        "stages": {
+          "windowEvents": 646.0421669999996,
+          "window": 1099.3281659999993,
+          "resources": 0.0069590000002790475,
+          "reportedWork": 64.64329199999884,
+          "daySummary": 1222.2129999999997
+        }
+      },
+      {
+        "date": "2026-11-07",
+        "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-07"
+        ],
+        "computeMs": 3795.503625000001,
+        "serializeMs": 32.79633399999875,
+        "payloadBytes": 12184518,
+        "rssMiB": 636.296875,
+        "peakRssMiB": 699.234375,
+        "heapUsedMiB": 230.1682586669922,
+        "intervals": 26140,
+        "sessions": 184,
+        "stages": {
+          "windowEvents": 1017.6642919999995,
+          "window": 1468.2184589999997,
+          "resources": 0.010333000000173342,
+          "reportedWork": 793.1208330000009,
+          "daySummary": 3795.4868749999987
+        }
+      },
+      {
+        "date": "2026-11-07",
+        "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+        "recomputations": 0,
+        "retainedDays": [
+          "2026-11-07"
+        ],
+        "computeMs": 1113.2980000000025,
+        "serializeMs": 34.03558299999713,
+        "payloadBytes": 12184518,
+        "rssMiB": 713.765625,
+        "peakRssMiB": 713.765625,
+        "heapUsedMiB": 144.27019500732422,
+        "intervals": 26140,
+        "sessions": 184,
+        "stages": {
+          "window": 0.005000000001018634,
+          "resources": 317.13537499999984,
+          "reportedWork": 795.8510419999984,
+          "daySummary": 1113.2851250000022
+        }
+      }
+    ],
+    "current": [
+      {
+        "date": "2026-11-07",
+        "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-07"
+        ],
+        "computeMs": 2554.126292,
+        "serializeMs": 46.292417000000114,
+        "payloadBytes": 12184518,
+        "rssMiB": 513.625,
+        "peakRssMiB": 513.625,
+        "heapUsedMiB": 225.81156158447266,
+        "intervals": 26140,
+        "sessions": 184,
+        "stages": {
+          "windowEvents": 963.6849579999998,
+          "window": 1306.0256250000002,
+          "resources": 389.35616600000003,
+          "reportedWork": 781.5662080000002,
+          "daySummary": 2554.08325
+        }
+      },
+      {
+        "date": "2026-11-12",
+        "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-12"
+        ],
+        "computeMs": 1402.1022499999995,
+        "serializeMs": 63.40400000000045,
+        "payloadBytes": 13701057,
+        "rssMiB": 614.234375,
+        "peakRssMiB": 614.234375,
+        "heapUsedMiB": 257.37561798095703,
+        "intervals": 33383,
+        "sessions": 290,
+        "stages": {
+          "windowEvents": 895.3632080000002,
+          "window": 1336.864125,
+          "resources": 0.009707999999591266,
+          "reportedWork": 1.2701669999996739,
+          "daySummary": 1402.093375
+        }
+      },
+      {
+        "date": "2026-11-06",
+        "resultSha256": "5624baae3a38dc811e90d4d1bac1f6e6f0e03c619e57ac5e339528f8996847c5",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-06"
+        ],
+        "computeMs": 1848.007791,
+        "serializeMs": 30.05566699999963,
+        "payloadBytes": 9275986,
+        "rssMiB": 681.65625,
+        "peakRssMiB": 681.65625,
+        "heapUsedMiB": 367.55152893066406,
+        "intervals": 21653,
+        "sessions": 365,
+        "stages": {
+          "windowEvents": 775.8313749999998,
+          "window": 1071.847917,
+          "resources": 0.0059999999994033715,
+          "reportedWork": 709.8573749999996,
+          "daySummary": 1847.9749170000005
+        }
+      },
+      {
+        "date": "2026-11-12",
+        "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-12"
+        ],
+        "computeMs": 1022.4408749999993,
+        "serializeMs": 59.81975000000057,
+        "payloadBytes": 13701057,
+        "rssMiB": 693.4375,
+        "peakRssMiB": 693.4375,
+        "heapUsedMiB": 251.4874496459961,
+        "intervals": 33383,
+        "sessions": 290,
+        "stages": {
+          "windowEvents": 552.0229589999999,
+          "window": 967.751792,
+          "resources": 0.006792000000132248,
+          "reportedWork": 2.3299999999999272,
+          "daySummary": 1022.4290829999991
+        }
+      },
+      {
+        "date": "2026-11-07",
+        "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+        "recomputations": 1,
+        "retainedDays": [
+          "2026-11-07"
+        ],
+        "computeMs": 2156.5966659999995,
+        "serializeMs": 33.04004200000054,
+        "payloadBytes": 12184518,
+        "rssMiB": 686.828125,
+        "peakRssMiB": 703.921875,
+        "heapUsedMiB": 160.1182861328125,
+        "intervals": 26140,
+        "sessions": 184,
+        "stages": {
+          "windowEvents": 913.0579159999998,
+          "window": 1291.5029169999998,
+          "resources": 0.006833999999798834,
+          "reportedWork": 786.1634169999998,
+          "daySummary": 2156.578625
+        }
+      },
+      {
+        "date": "2026-11-07",
+        "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+        "recomputations": 0,
+        "retainedDays": [
+          "2026-11-07"
+        ],
+        "computeMs": 911.5001250000005,
+        "serializeMs": 40.4526249999999,
+        "payloadBytes": 12184518,
+        "rssMiB": 705.453125,
+        "peakRssMiB": 705.453125,
+        "heapUsedMiB": 335.1353073120117,
+        "intervals": 26140,
+        "sessions": 184,
+        "stages": {
+          "window": 0.005915999998251209,
+          "resources": 0.0018749999999272404,
+          "reportedWork": 911.2147089999999,
+          "daySummary": 911.4878750000007
+        }
+      }
+    ]
+  },
+  "resultsEqual": true,
+  "findings": {
+    "rawRecomputations": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      0
+    ],
+    "retainedRawDays": [
+      [
+        "2026-11-07"
+      ],
+      [
+        "2026-11-12"
+      ],
+      [
+        "2026-11-06"
+      ],
+      [
+        "2026-11-12"
+      ],
+      [
+        "2026-11-07"
+      ],
+      [
+        "2026-11-07"
+      ]
+    ],
+    "sameDayReportedWorkMs": 911.2147089999999
+  }
+}
