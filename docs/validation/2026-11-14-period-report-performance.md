@@ -55,4 +55,4 @@ The progress unit is a completed day, not a fabricated timer percentage. A parti
 
 Fresh-context whole-branch review found no actionable findings or declined items; independent focused verification passed 37 tests.
 
-Private database copies, full results, CPU profile and run logs stay in ignored `.capture/period-performance`; only aggregate evidence belongs in Git.
+Temporary database clones were removed after the final comparisons to reclaim test disk space. Full result JSON, the CPU profile and run logs remain in ignored `.capture/period-performance`; only aggregate evidence belongs in Git. The original database and the earlier UI preview were untouched by this cleanup.
