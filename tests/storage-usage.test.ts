@@ -42,3 +42,5 @@ test('checkpoint frees the write-ahead log without changing captured events',()=
   assert.ok(storageUsage(root).wal.bytes<walBefore);
  }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('derived periods count toward displayed and managed disk usage',async()=>{const{quickStorageUsage}=await import('../src/capture/storage-policy.ts');const root=mkdtempSync(join(tmpdir(),'at-derived-size-'));try{writeFileSync(join(root,'derived-periods.sqlite'),'x'.repeat(123));const report=storageUsage(root);assert.equal(report.derived?.bytes,123);assert.equal(report.totalBytes,123);assert.equal(quickStorageUsage(root).managedBytes,123);}finally{rmSync(root,{recursive:true,force:true});}});

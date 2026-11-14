@@ -1,3 +1,6 @@
+import{encodeHome}from'./home-wire.ts';
+import{compactHome,type HomeSummary}from'./home-summary.ts';
+import{PeriodProjection}from'./period-projection.ts';
 import {DaySnapshotCache} from './day-snapshot-cache.ts';
 import {BillingReports} from './billing-worker.ts';
 import {BillingStore,validateBillingProject} from './billing-store.ts';
@@ -95,6 +98,8 @@ export class Collector {
   private reviewCache:{revision:string;decisions:HumanDecision[];splits:HumanSplit[]}|undefined;
   private periodProgress=new PeriodProgress();
   periodReviewProgress(id:string){return this.periodProgress.get(id);}
+  private homeSnapshots=new DaySnapshotCache(4*1024*1024,3);
+  private projection:PeriodProjection;
   private viewSnapshots=new DaySnapshotCache();
   private reportEvidence=new Map<string,{revision:string;events:CaptureEvent[];ends:Map<string,number>;upper:number;expires:number;bytes:number}>();
   private reportEvidenceStamp?:{revision:string;value:string};
@@ -230,7 +235,7 @@ export class Collector {
     this.linear=new LinearConnection(output,keychainHelper(keychainPath));
     this.loadSettings();
     this.surfaceHistory=this.store.settingsEvents().sort((a,b)=>a.observedAt-b.observedAt);
-    this.days=new DaySummaries(this.store,()=>this.summaryOptions());
+    this.projection=new PeriodProjection(join(output,'derived-periods.sqlite'));this.days=new DaySummaries(this.store,()=>this.summaryOptions(),32*1024*1024,this.projection);
     // Share the store's connection: a second connection's commits would look
     // like foreign writes and invalidate every summary cache once a minute.
     this.usageReader=new UsageReader(this.store.database,undefined,this.reader);this.hookInstallation=new HookInstallation(output);this.mcpInstallation=new McpInstallation(output);this.claudeStatusLine=new ClaudeStatusLineInstallation(output);this.syncUsage();
@@ -566,7 +571,7 @@ export class Collector {
     const pending=this.websiteResolver.resolve(url,known,recent).then(result=>{if(result&&this.running&&revision===this.websiteRevision){if(this.websiteMatches.get(key)?.projectPath!==result.projectPath)this.websiteApplied.delete(key);this.websiteMatches.set(key,result);if(this.websiteMatches.size>200){const oldest=[...this.websiteMatches].sort((a,b)=>a[1].observedAt-b[1].observedAt).slice(0,this.websiteMatches.size-200);for(const [oldKey] of oldest){this.websiteMatches.delete(oldKey);this.websiteApplied.delete(oldKey);}}}}).catch(()=>{/* Keep unverified website activity unassigned. */}).finally(()=>{if(this.websitePending.get(key)===pending)this.websitePending.delete(key);});
     this.websitePending.set(key,pending);
   }
-  private invalidateSummaries(){this.summaryCache=undefined;this.viewSnapshots.clear();this.days.invalidate();this.decorated.clear();this.reviewCache=undefined;this.knownWorkspaceCache=undefined;}
+  private invalidateSummaries(){this.summaryCache=undefined;this.viewSnapshots.clear();this.homeSnapshots.clear();this.days.invalidate();this.decorated.clear();this.reviewCache=undefined;this.knownWorkspaceCache=undefined;}
   updateSettings(patch:Partial<CaptureSettings>){
     validateSettings(patch);
     if(this.stopping)throw new Error('Capture is stopping');
@@ -740,6 +745,15 @@ export class Collector {
   versionedSummary(date:string,maxAgeMs=0,since?:string):Summary&{token:string}|{unchanged:true;token:string}{
     const snapshot=this.viewedDaySummary(date,maxAgeMs);
     return since===snapshot.token?{unchanged:true,token:snapshot.token}:{...snapshot.value,token:snapshot.token};
+  }
+  versionedHomeResponse(date:string,maxAgeMs=0,since?:string){const value=this.versionedHomeSummary(date,maxAgeMs,since);return 'unchanged'in value?value:encodeHome(value);}
+  versionedHomeSummary(date:string,maxAgeMs=0,since?:string):HomeSummary&{token:string}|{unchanged:true;token:string}{
+    const snapshot=this.viewedDaySummary(date,maxAgeMs),token=`h-${snapshot.token}`;
+    if(since===token)return {unchanged:true,token};
+    const hit=this.homeSnapshots.get(date,token);
+    if(hit)return {...hit.value as HomeSummary,token};
+    const value=compactHome(snapshot.value);this.homeSnapshots.put(date,token,value,token);
+    return {...value,token};
   }
   private tokenForSummary(summary:Summary){
     let token=this.summaryTokens.get(summary);
@@ -961,5 +975,5 @@ export class Collector {
     finally{if(this.lockOwned&&!this.pressureQueued){const lock=join(this.output,'capture.lock');if(ownsLock(lock))unlinkSync(lock);this.lockOwned=false;}}
     return this.status();
   }
-  async close(){this.closing=true;clearTimeout(this.storageResumeTimer);this.linear.close();await this.stop(true);await this.storageResumeCheck;await this.pressureRecovery;await this.storageTask?.catch(()=>{});await this.usageReader.close();this.store.close();}
+  async close(){this.closing=true;clearTimeout(this.storageResumeTimer);this.linear.close();await this.stop(true);await this.storageResumeCheck;await this.pressureRecovery;await this.storageTask?.catch(()=>{});await this.usageReader.close();this.projection.close();this.store.close();}
 }

@@ -5,7 +5,7 @@ import {join} from 'node:path';
 
 export interface StorageSize {bytes:number;files:number;truncated:boolean;}
 export interface StorageUsage {
- database:StorageSize;wal:StorageSize;sharedMemory:StorageSize;indexes:StorageSize;
+ derived?:StorageSize;database:StorageSize;wal:StorageSize;sharedMemory:StorageSize;indexes:StorageSize;
  spool:StorageSize;runtimes:StorageSize;exports:StorageSize;
  history?:ReturnType<typeof eventStorageStats>&{efficient:boolean};storageLimitMB?:number;care?:{at:number|null;error:string|null;paused:boolean};
  totalBytes:number;eventCount:number;freeBytes:number|null;
@@ -37,6 +37,7 @@ export function storageUsage(root:string,now=Date.now()/1000):StorageUsage{
  const sharedMemory=fileSize(join(root,'events.sqlite-shm'));
  const spool=directorySize(join(root,'spool')),runtimes=directorySize(join(root,'hook-runtime'));
  const exports=directorySize(join(root,'exports'));
+ const derived=empty();for(const name of ['derived-periods.sqlite','derived-periods.sqlite-journal','derived-periods.sqlite-wal','derived-periods.sqlite-shm']){const item=fileSize(join(root,name));derived.bytes+=item.bytes;derived.files+=item.files;}
  const indexes=empty();
  let freeBytes:number|null=null;
  try{const volume=statfsSync(root);freeBytes=Number(volume.bavail)*Number(volume.bsize);}catch{/* Report storage even when filesystem capacity is unavailable. */}
@@ -54,6 +55,6 @@ export function storageUsage(root:string,now=Date.now()/1000):StorageUsage{
     .map(row=>({date:String(row.date),source:String(row.source),events:Number(row.events),payloadBytes:Number(row.payloadBytes)}));
   }finally{db.close();}
  }
- return {database,wal,sharedMemory,indexes,spool,runtimes,exports,eventCount,byDay,freeBytes,history,
-  totalBytes:database.bytes+wal.bytes+sharedMemory.bytes+spool.bytes+runtimes.bytes+exports.bytes};
+ return {derived,database,wal,sharedMemory,indexes,spool,runtimes,exports,eventCount,byDay,freeBytes,history,
+  totalBytes:derived.bytes+database.bytes+wal.bytes+sharedMemory.bytes+spool.bytes+runtimes.bytes+exports.bytes};
 }

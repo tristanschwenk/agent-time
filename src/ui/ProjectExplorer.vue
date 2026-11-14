@@ -5,6 +5,7 @@ import ReportedWorkTimeline from './ReportedWorkTimeline.vue';
 import SessionExplorer from './SessionExplorer.vue';
 import { activityPreview, explorerSessions } from './project-explorer.ts';
 import { useStore, type TimelineGroup } from './store.ts';
+import {toast}from'./toast.ts';
 import { duration } from './format.ts';
 import { projectColor, projectDisplay } from './project-identity.ts';
 import type { ReportedWorkItem } from '../capture/reported-work.ts';
@@ -25,12 +26,16 @@ const groups = computed(() => {
   return text ? all.filter((group) => group.name.toLowerCase().includes(text)) : all;
 });
 const expanded = reactive<Record<string, boolean>>({});
+async function toggleProject(name:string){
+ if(expanded[name]){expanded[name]=false;return;}
+ try{if(await store.ensureDetails())expanded[name]=true;}catch(error){toast.error(error,'project-details');}
+}
 // A project page opens with its project expanded.
 watch(
   () => [store.project, store.selectedDate],
   () => {
     for (const key of Object.keys(expanded)) delete expanded[key];
-    if (store.project !== 'all') expanded[store.project] = true;
+    if (store.project !== 'all') void toggleProject(store.project);
   },
   { immediate: true },
 );
@@ -70,6 +75,7 @@ const reportedCounts = computed(() => {
       </label>
     </div>
 
+    <p v-if="store.detailsLoading" role="status">Loading activity details…</p>
     <div class="columns" aria-hidden="true">
       <span>Project</span><span>Across the day</span><span>Agent time</span><span>Your time</span><span>Peak</span>
     </div>
@@ -83,7 +89,7 @@ const reportedCounts = computed(() => {
         class="explorer-row"
         :aria-expanded="Boolean(expanded[group.name])"
         :aria-label="`${expanded[group.name] ? 'Collapse' : 'Expand'} ${projectDisplay(group.name, store.projects)}`"
-        @click="expanded[group.name] = !expanded[group.name]"
+        @click="toggleProject(group.name)"
       >
         <span class="name">
           <ChevronRight :size="14" :class="{ turned: expanded[group.name] }" />

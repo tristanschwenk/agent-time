@@ -1,9 +1,10 @@
+import type{PeriodProjection}from'./period-projection.ts';
 import {estimatedBytes} from './storage-policy.ts';
 import type {EventStore} from './store.ts';
 import type {CaptureEvent,Summary} from './events.ts';
 import {summarize} from './correlate.ts';
 import {appendActivitySummary} from './incremental-summary.ts';
-import {inWindow,isActivitySample,localDayBounds,type WindowBounds} from './summary-window.ts';
+import {inWindow,isActivitySample,localDayBounds,type WindowBounds,windowBounds} from './summary-window.ts';
 
 export interface SummaryOptions {idleThreshold:number;agentIdleThreshold:number;}
 export interface DayWindow {
@@ -38,10 +39,11 @@ export class DaySummaries {
  has(date:string){return this.entries.has(date);}
  release(date:string){this.entries.delete(date);}
  private trim(){while(this.entries.size>1&&(this.entries.size>maxCachedDays||[...this.entries.values()].reduce((n,entry)=>n+this.retainedBytes(entry),0)>this.budgetBytes))this.entries.delete(this.entries.keys().next().value!);}
+ private projection?:PeriodProjection;
  private store:EventStore;private options:()=>SummaryOptions;
  /** Number of full window computations, for tests and diagnostics. */
  computations=0;
- constructor(store:EventStore,options:()=>SummaryOptions,budgetBytes=32*1024*1024){this.store=store;this.options=options;this.budgetBytes=budgetBytes;}
+ constructor(store:EventStore,options:()=>SummaryOptions,budgetBytes=32*1024*1024,projection?:PeriodProjection){this.projection=projection;this.store=store;this.options=options;this.budgetBytes=budgetBytes;}
  invalidate(){this.entries.clear();this.seenRowid=undefined;}
  window(date:string,maxAgeMs=0):DayWindow{
   const now=Date.now(),cached=this.entries.get(date);
@@ -67,7 +69,7 @@ export class DaySummaries {
   for(const [date,entry] of [...this.entries]){
    const relevant=events.filter(event=>inWindow(event,entry.bounds));
    if(!relevant.length)continue;
-   const ordered=relevant.every((event,index)=>isActivitySample(event)&&event.observedAt>=(index?relevant[index-1]!.observedAt:entry.maxObservedAt));
+   const ordered=entry.maxObservedAt!==-Infinity&&relevant.every((event,index)=>isActivitySample(event)&&event.observedAt>=(index?relevant[index-1]!.observedAt:entry.maxObservedAt));
    const value=ordered?appendActivitySummary(entry.raw,entry.lastActivity,relevant,idleThreshold):null;
    if(!value){this.entries.delete(date);continue;}
    entry.raw=value;entry.lastActivity=relevant.at(-1);entry.maxObservedAt=relevant.at(-1)!.observedAt;entry.version=++this.version;
@@ -75,10 +77,17 @@ export class DaySummaries {
  }
  private compute(date:string):DayWindow{
   const {from,to}=localDayBounds(date),{idleThreshold,agentIdleThreshold}=this.options();
-  const {events,bounds}=this.store.windowEvents(from,to,agentIdleThreshold);
-  this.computations++;
-  const raw=summarize(events,{idleThreshold,agentIdleThreshold,alreadyUnique:true});
-  applyTerminalTitles(raw,events,handles=>this.store.latestTerminals(handles));
+  const bounds=windowBounds(from,to,agentIdleThreshold),closed=Date.now()/1000>=to;
+  const cacheKey=()=>{try{return closed&&this.projection?JSON.stringify([1,from,to,idleThreshold,agentIdleThreshold,this.store.projectionSignature(bounds)]):'';}catch{return '';}};
+  const signature=cacheKey();
+  let raw=signature?this.projection?.get(date,signature):undefined;
+  let events:CaptureEvent[]=[];
+  if(!raw){
+   events=this.store.windowEvents(from,to,agentIdleThreshold).events;this.computations++;
+   raw=summarize(events,{idleThreshold,agentIdleThreshold,alreadyUnique:true});
+   applyTerminalTitles(raw,events,handles=>this.store.latestTerminals(handles));
+   if(signature&&signature===cacheKey())this.projection?.put(date,signature,raw);
+  }
   let lastActivity:CaptureEvent|undefined,maxObservedAt=-Infinity;
   for(const event of events){
    maxObservedAt=Math.max(maxObservedAt,event.observedAt);

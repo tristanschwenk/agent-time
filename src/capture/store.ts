@@ -26,11 +26,13 @@ export function validateManualNote(value:unknown):Omit<ManualNote,'id'|'createdA
 // A review row groups up to 500 intervals; bulk actions span many rows.
 export const MAX_DECISION_PAIRS=10000;
 export class EventStore {
+  private storageIdentity='memory';
   private db: DatabaseSync;private generation=0;private nonEventGeneration=0;
   constructor(path: string) {
     if (path !== ':memory:') {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       closeSync(openSync(path, 'a', 0o600)); chmodSync(path, 0o600);
+      const file=statSync(path);this.storageIdentity=`${file.ino}:${file.birthtimeMs}`;
     }
     this.db = openEventDatabase(path);
     ensureBillingSchema(this.db);
@@ -42,6 +44,20 @@ export class EventStore {
     this.db.exec("CREATE INDEX IF NOT EXISTS events_hook_provider ON events(json_extract(payload,'$.provider')) WHERE json_extract(payload,'$.source')='hook'");
     // Terminal observations are stored only on change; find the newest per handle directly.
     this.db.exec("CREATE INDEX IF NOT EXISTS events_terminal_handle ON events(json_extract(payload,'$.terminalHandle')) WHERE json_extract(payload,'$.kind')='terminal'");
+  }
+  /** Stable across process restarts; append signatures remain local to each evidence window. */
+  projectionSignature(bounds:WindowBounds):string{
+    this.db.exec(`CREATE TABLE IF NOT EXISTS at_projection_revision(id INTEGER PRIMARY KEY,identity TEXT NOT NULL,revision INTEGER NOT NULL);
+      CREATE TRIGGER IF NOT EXISTS at_projection_event_replace BEFORE INSERT ON events WHEN EXISTS(SELECT 1 FROM events WHERE event_id=NEW.event_id OR rowid=NEW.rowid) BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;
+      CREATE TRIGGER IF NOT EXISTS at_projection_event_update AFTER UPDATE ON events BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;
+      CREATE TRIGGER IF NOT EXISTS at_projection_event_delete AFTER DELETE ON events BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;`);
+    this.db.prepare('INSERT OR IGNORE INTO at_projection_revision VALUES(1,?,0)').run(randomUUID());
+    if(isPackedEventDatabase(this.db))this.db.exec(`CREATE TRIGGER IF NOT EXISTS at_projection_block_insert AFTER INSERT ON at_event_blocks BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;
+      CREATE TRIGGER IF NOT EXISTS at_projection_block_update AFTER UPDATE ON at_event_blocks BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;
+      CREATE TRIGGER IF NOT EXISTS at_projection_block_delete AFTER DELETE ON at_event_blocks BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;`);
+    const stamp=this.db.prepare('SELECT identity,revision FROM at_projection_revision WHERE id=1').get()!;
+    const signature=this.windowSignature(bounds).split(':').slice(0,4).join(':');
+    return `${this.storageIdentity}:${stamp.identity}:${stamp.revision}:${signature}`;
   }
   /** The open connection, for collaborators that must share it (see UsageReader). */
   get database():DatabaseSync{return this.db;}

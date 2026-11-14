@@ -1,3 +1,4 @@
+import{decodeHome,type HomeWire}from'../capture/home-wire.ts';
 import type { HumanDecisionSegment } from '../capture/human-review.ts';
 import type {StoragePressureNotice} from '../capture/storage-pressure-status.ts';
 import type { Summary } from '../capture/events.ts';
@@ -163,6 +164,7 @@ export const storageRecoveryTransport = {
   cancel: () => request<boolean>('storage_replacement_cancel'),
 };
 export const transport = {
+  homeSince:(date:string,background:boolean,since?:string)=>request<HomeWire|{unchanged:true;token:string}>('home_summary',{date,...(background?{background:true}:{}),...(since?{since}:{})}).then(value=>'unchanged'in value?value:decodeHome(value)),
   cleanupPreview: () => request<TrackingCleanupPreview>('tracking_cleanup_preview'),
   cleanupTracking: () => request<TrackingCleanupResult>('tracking_cleanup', { confirmed: true }),
   hooksStatus: () => request<HookInstallationStatus>('hooks_status'),

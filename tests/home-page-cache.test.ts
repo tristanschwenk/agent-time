@@ -14,17 +14,17 @@ test('missing browser compression disables only the optional cache',async()=>{
  try{(globalThis as any).CompressionStream=undefined;const cache=new SummaryPageCache();await cache.put('a','token',value);assert.equal(cache.get('a'),undefined);}finally{globalThis.CompressionStream=original;}
 });
 
-function loader(cache:any,read:(date:string,background:boolean,since?:string)=>Promise<unknown>){
- const source=readFileSync(new URL('../src/ui/store.ts',import.meta.url),'utf8').match(/  async function loadSummary\(\) \{[\s\S]*?\n  \}\n\n  async function loadStatus/)![0].replace(/\n\n  async function loadStatus$/,'');
+function loader(cache:any,read:(date:string,background:boolean,since?:string)=>Promise<unknown>,initialPage='review'){
+ const source=readFileSync(new URL('../src/ui/store.ts',import.meta.url),'utf8').match(/  async function loadSummary\(\) \{[\s\S]*?\n  \}\n/)![0];
  const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const selectedDate=ref('2026-10-20'),summary=ref<Summary|null>(null),loaded=ref(false),reports=ref([]),error=ref('');
- const make=new Function('selectedDate','summary','summaryLoaded','reportedWork','pollError','summaryPagesCache','transport','reportedWorkTransport','markRaw',`
- let summaryRevision=0,summaryKey='',summaryToken,summaryFetchedAt=0,reportedWorkInflight;const native=false,windowFocused={value:true};
+ const make=new Function('selectedDate','summary','summaryLoaded','reportedWork','pollError','summaryPagesCache','transport','reportedWorkTransport','markRaw','initialPage',`
+ let summaryRevision=0,summaryKey='',summaryToken,summaryFetchedAt=0,reportedWorkInflight;const native=false,windowFocused={value:true},page={value:initialPage};let summaryKind='full',detailsDate='';
  const isRetryableError=()=>false,humanizeError=String;
  function storeSummary(value,date){summary.value=value;summaryLoaded.value=true;summaryKey=date+'|fixture';summaryFetchedAt=Date.now();summaryToken=undefined;}
  ${code}
  return {loadSummary,change(date){selectedDate.value=date;summaryRevision++;summaryKey='';summaryToken=undefined;summary.value=null;summaryLoaded.value=false;}};`);
- return{...make(selectedDate,summary,loaded,reports,error,cache,{summarySince:read},{list:async()=>[]},markRaw),summary,loaded};
+ return{...make(selectedDate,summary,loaded,reports,error,cache,{summarySince:read,homeSince:read},{list:async()=>[]},markRaw,initialPage),summary,loaded};
 }
 
 test('a revisited page validates its cached token before showing exactly that day',async()=>{
@@ -41,3 +41,5 @@ test('an invalid token uses fresh data; a late response never restores the previ
  pending.get('2026-10-21')!({...value,humanSeconds:456,token:'fresh'});await fresh;
  pending.get('2026-10-20')!({unchanged:true,token:'old'});await old;assert.equal(state.summary.value?.humanSeconds,456);
 });
+
+test('Home navigation uses an isolated compact token cache',async()=>{const{SummaryPageCache}=await import('../src/ui/summary-page-cache.ts');const cache=new SummaryPageCache();const home={...value,home:{version:1,reviewBadge:1,reviewPending:2,reviewCaptured:3}};await cache.put('home:2026-10-20','h-saved',home);await cache.put('2026-10-20','full',value);const calls:any[]=[];const state=loader(cache,async(...args)=>{calls.push(args);return{unchanged:true,token:'h-saved'};},'today');await state.loadSummary();assert.equal(calls[0][2],'h-saved');assert.deepEqual(state.summary.value,home);});

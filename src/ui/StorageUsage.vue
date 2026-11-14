@@ -30,6 +30,7 @@ const parts = computed(() => {
   if (!u) return [];
   return [
     { name: 'Your history', detail: 'Recorded activity, sessions and reviews', bytes: u.database.bytes + u.wal.bytes + u.sharedMemory.bytes, color: 'var(--agent-chart)' },
+    { name: 'Calculated periods', detail: 'Rebuildable cache, limited in size', bytes: u.derived?.bytes||0, color: 'var(--muted)' },
     { name: 'Backups', detail: 'Copies kept from earlier storage upgrades', bytes: u.exports.bytes, color: 'var(--human-chart)' },
     { name: 'Agent connections', detail: 'Hook helpers and events waiting to be saved', bytes: u.runtimes.bytes + u.spool.bytes, color: 'var(--status-good)' },
   ];

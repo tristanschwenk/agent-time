@@ -11,7 +11,7 @@ export function dayConfidence(summary:Summary,sources:SourceSnapshot[],agentIds:
  const agents=new Set(agentIds),tracking=sources.filter(source=>source.id==='macos'||agents.has(source.id));
  const rows=tracking.map(source=>{
   const observed=source.id==='macos'?intervals.some(interval=>interval.state==='human'):
-   intervals.some(interval=>interval.provider===source.id&&interval.sourceEventIds.length>0);
+   intervals.some(interval=>interval.provider===source.id&&(interval.observedEvidence??interval.sourceEventIds.length>0));
   const received=observed||(source.id==='macos'?
    today&&source.lastEvent!==null&&source.lastEvent>=from&&source.lastEvent<to:
    summary.sessions.some(session=>session.provider===source.id&&session.lastObservedAt>=from&&session.lastObservedAt<to));

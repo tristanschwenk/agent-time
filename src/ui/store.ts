@@ -1,3 +1,4 @@
+import type{HomeSummary}from'../capture/home-summary.ts';
 import {SummaryPageCache} from './summary-page-cache.ts';
 import {requestReviewFocus} from './review-workspace.ts';
 import {createWorkspaceScope} from './workspace-scope.ts';
@@ -94,10 +95,11 @@ export function summarySignature(summary: Summary): string {
       hash = Math.imul(hash, 0x01000193);
     }
   };
+  mix(JSON.stringify((summary as Partial<HomeSummary>).home));
   for (const interval of summary.intervals) {
     mix(interval.start);
     mix(interval.end);
-    mix(interval.state);
+    mix(interval.state);mix(interval.observedEvidence);
     mix(interval.workspaceId);
     mix(interval.userAttribution);
     mix(interval.reviewSegment);
@@ -228,11 +230,16 @@ function createStore() {
 
   /** Collector version of the summary on screen; polls skip the download while it is current. */
   const summaryPagesCache=new SummaryPageCache();
+  let summaryKind:'home'|'full'='full';
+  let detailsDate='';
+  const detailsLoading=ref(false);
+  const detailsLoaded=computed(()=>!('home'in summary.value));
+  const homeReviewCounts=computed(()=>(summary.value as Partial<HomeSummary>).home);
   let summaryToken: string | undefined;
   let reportedWorkInflight: Promise<void> | undefined;
   function storeSummary(next: Summary, date: string) {
     summaryToken = undefined;
-    const key = `${date}|${summarySignature(next)}`;
+    const key = `${date}|${'home'in next?'home':'full'}|${summarySignature(next)}`;
     summaryFetchedAt = Date.now();
     summaryLoaded.value = true;
     if (key === summaryKey) return;
@@ -247,16 +254,17 @@ function createStore() {
   async function loadSummary() {
     const date = selectedDate.value,
       revision = summaryRevision;
+    const kind=page.value==='today'&&detailsDate!==date?'home':'full',cacheKey=kind==='home'?'home:'+date:date,sameScope=summaryKind===kind&&summaryKey.split('|')[0]===date;
     // The desktop window can stay visible behind other apps; then a lighter background summary is enough.
     const background = native && !windowFocused.value;
     // While visible but unfocused, a full summary every minute is enough.
-    const due = !background || summaryKey.split('|')[0] !== date || Date.now() - summaryFetchedAt >= 60_000;
+    const due = !background || !sameScope || Date.now() - summaryFetchedAt >= 60_000;
     try {
-      const restore=summaryKey.split('|')[0]!==date?summaryPagesCache.get(date):undefined;
+      const restore=!sameScope?summaryPagesCache.get(cacheKey):undefined;
       const cached=restore?await restore:undefined;
       if(revision!==summaryRevision||date!==selectedDate.value)return;
       const nextRequest = due
-        ? transport.summarySince(date, background, summaryKey.split('|')[0] === date ? summaryToken : cached?.token)
+        ? (kind==='home'?transport.homeSince:transport.summarySince)(date, background, sameScope ? summaryToken : cached?.token)
         : Promise.resolve(null);
       if (!reportedWorkInflight) reportedWorkInflight = reportedWorkTransport.list(date).then(reports => {
         if (revision === summaryRevision && date === selectedDate.value) reportedWork.value = markRaw(reports);
@@ -265,13 +273,14 @@ function createStore() {
       if (revision !== summaryRevision || date !== selectedDate.value) return;
       if (next && 'unchanged' in next) {
         if(cached){storeSummary(cached.value,date);summaryToken=next.token;}
+        summaryKind=kind;
         summaryFetchedAt = Date.now();
         summaryLoaded.value = true;
       } else if (next) {
         const { token, ...rest } = next;
         storeSummary(rest as Summary, date);
-        summaryToken = token;
-        if(token)void summaryPagesCache.put(date,token,rest as Summary);
+        summaryKind=kind;summaryToken = token;
+        if(token)void summaryPagesCache.put(cacheKey,token,rest as Summary);
       }
       pollError.value = '';
     } catch (cause) {
@@ -279,6 +288,17 @@ function createStore() {
     }
   }
 
+  let detailRequest:{date:string;revision:number;promise:Promise<boolean>}|undefined;
+  async function ensureDetails():Promise<boolean>{
+    if(detailsLoaded.value&&summaryLoaded.value)return true;
+    const date=selectedDate.value;if(detailRequest?.date===date&&detailRequest.revision===summaryRevision)return detailRequest.promise;
+    detailsDate=date;detailsLoading.value=true;const revision=++summaryRevision;
+    const promise=(async()=>{
+      try{const next=await transport.summary(date);if(date!==selectedDate.value||revision!==summaryRevision)return false;
+        storeSummary(next,date);summaryKind='full';summaryToken=(next as Summary&{token?:string}).token;return true;
+      }finally{if(detailRequest?.revision===revision){detailRequest=undefined;detailsLoading.value=false;}}
+    })();detailRequest={date,revision,promise};return promise;
+  }
   async function loadStatus() {
     try {
       status.value = await transport.status();
@@ -382,6 +402,7 @@ function createStore() {
     if (windowVisible.value && next === 'settings' && settingsSection.value === 'connections' && connectionsSection.value === 'health') void pollers.health.refresh();
     if (windowVisible.value && summaryLoaded.value && next === 'review') void pollers.dayReview.refresh();
   });
+  watch([page,reportsSection],()=>{if(showsSummary.value&&page.value!=='today'&&'home'in summary.value){summaryRevision++;summaryLoaded.value=false;summary.value=emptySummary;summaryKey='';summaryToken=undefined;void pollers.summary.refresh();}});
   // Coming back into view: refresh straight away rather than waiting for the next tick.
   watch(windowVisible, (shown) => {
     if (shown) {
@@ -412,6 +433,7 @@ function createStore() {
   );
 
   watch(selectedDate, () => {
+    detailsDate='';detailsLoading.value=false;
     dayReviewRequest.value++;
     dayReviewLoading.value=false;backlogLoading.value=false;
     summaryRevision++;
@@ -801,7 +823,7 @@ function createStore() {
   const dayReviewed = computed(() => Boolean(dayReview.value?.completedAt && !dayReview.value.stale));
   /** Count shown on the Review navigation item. */
   const reviewBadge = computed(() =>
-    summaryLoaded.value ? reviewContextPending.value.length : 0,
+    summaryLoaded.value ? homeReviewCounts.value?.reviewBadge??reviewContextPending.value.length : 0,
   );
   const dayGaps = computed(() => unobservedGaps(dayIntervals.value));
 
@@ -896,6 +918,7 @@ function createStore() {
     notes,
     pollError,
     reviewRevision,
+    homeReviewCounts,detailsLoading,detailsLoaded,ensureDetails,
     // actions
     start,
     refreshSummary: () => pollers.summary.refresh(),

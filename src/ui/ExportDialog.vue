@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import {
   DialogContent,
   DialogDescription,
@@ -11,12 +11,15 @@ import {
 import { minuteCreditSeconds } from '../capture/correlate.ts';
 import { humanReviewState } from '../capture/human-review.ts';
 import { useStore } from './store.ts';
+import{toast}from'./toast.ts';
 import { duration, longDate } from './format.ts';
 import { intervalProject, projectDisplay, sessionProject, unassignedProject } from './project-identity.ts';
 
 const open = defineModel<boolean>('open', { required: true });
 const store = reactive(useStore());
 
+function loadExportDetails(){void store.ensureDetails().catch(error=>toast.error(error,'export-details'));}
+watch(open,value=>{if(value)loadExportDetails();});
 const groups = computed(() => store.exportReviewGroups);
 const decided = computed(() => groups.value.filter((group) => Boolean(group.userAttribution)).length);
 const unmatched = computed(() => groups.value.filter((group) => humanReviewState(group) === 'unmatched'));
@@ -29,7 +32,8 @@ function openReview() {
   store.navigate('review');
 }
 
-function exportCsv() {
+async function exportCsv() {
+  try{if(!await store.ensureDetails())return;}catch(error){toast.error(error,'export-details');return;}
   open.value = false;
   const headers = [
     'Project',
@@ -107,6 +111,8 @@ function exportCsv() {
           {{ longDate(store.selectedDate) }} ·
           {{ store.project === 'all' ? 'All projects' : projectDisplay(store.project, store.projects) }}
         </DialogDescription>
+        <p v-if="store.detailsLoading" role="status">Loading export details…</p>
+        <button v-else-if="!store.detailsLoaded" class="btn btn-sm" @click="loadExportDetails">Retry loading details</button>
         <p v-if="pending" class="export-warning">
           {{ pending }} {{ pending === 1 ? 'item still needs' : 'items still need' }} a project.
           <button class="btn btn-quiet btn-sm" @click="openReview">Review them first</button>

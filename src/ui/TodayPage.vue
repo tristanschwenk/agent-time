@@ -59,13 +59,14 @@ async function stopTimer(id: string, discard = false) {
 }
 
 
-const pending = computed(() => store.reviewPending.length);
+const pending = computed(() => store.homeReviewCounts?.reviewPending??store.reviewPending.length);
 const macSource = computed(() => store.confidence.sources.find((source) => source.id === 'macos'));
 
 // ---- Your activity details --------------------------------------------------------------
 const humanIntervals = computed(() => store.filteredIntervals.filter((interval) => interval.state === 'human'));
 const editableHumanGroups=computed(()=>buildAppReviewGroups(humanIntervals.value));
 function tabReviewGroups(tab:{workspaceId:string;tabId:string}){return buildAppReviewGroups(humanIntervals.value.filter(i=>i.workspaceId===tab.workspaceId&&i.tabId===tab.tabId));}
+async function loadHumanDetails(event:Event){if(!(event.target as HTMLDetailsElement).open)return;try{await store.ensureDetails();}catch(error){toast.error(error,'activity-details');}}
 const openSites=ref<Record<string,boolean>>({});
 const humanDetails=ref<{kind:'human';date:string;groups:AppReviewGroup[]}|null>(null),humanBusy=ref(false),humanUndo=ref('');
 const humanDetailsInvoker=ref<HTMLElement|null>(null);
@@ -256,11 +257,11 @@ const websites = computed(() => {
         <CheckCircle2 :size="12" />Day reviewed
       </span>
       <button
-        v-else-if="props.mode === 'today' && store.summaryLoaded && store.reviewCaptured.length"
+        v-else-if="props.mode === 'today' && store.summaryLoaded && (store.homeReviewCounts?.reviewCaptured??store.reviewCaptured.length)"
         class="btn btn-quiet btn-sm"
         @click="store.navigate('review')"
       >
-        Check {{ store.reviewCaptured.length }} automatic matches
+        Check {{ (store.homeReviewCounts?.reviewCaptured??store.reviewCaptured.length) }} automatic matches
       </button>
 
       <span class="day-confidence-inline">
@@ -301,7 +302,7 @@ const websites = computed(() => {
       <ProjectExplorer v-model:focus="chartFocus" />
     </section>
 
-    <details v-if="props.mode === 'today' && (humanTabs.length || websites.length)" class="human-tabs">
+    <details v-if="props.mode === 'today' && (humanTabs.length || websites.length)" class="human-tabs" @toggle="loadHumanDetails">
       <summary class="human-tabs-summary">
         <span>
           <strong>Where your time went</strong>
@@ -309,6 +310,9 @@ const websites = computed(() => {
         </span>
         <b>{{ duration(store.humanTime) }}</b>
       </summary>
+      <p v-if="store.detailsLoading" role="status">Loading activity details…</p>
+      <button v-if="!store.detailsLoaded&&!store.detailsLoading" class="btn btn-sm" @click="loadHumanDetails({target:{open:true}} as unknown as Event)">Load activity details</button>
+      <template v-if="store.detailsLoaded">
       <p v-if="humanUndo" role="status">Activity assignment saved. <button class="btn btn-sm" :disabled="humanBusy" @click="undoHuman">Undo assignment</button></p>
       <div v-for="tab in humanTabs" :key="tab.workspaceId + tab.tabId" class="human-tab-row">
         <span>
@@ -337,6 +341,7 @@ const websites = computed(() => {
           <b>{{ duration(sitePage.seconds) }}</b><HumanActivityActions :date="store.selectedDate" :groups="sitePage.reviewGroups" :projects="store.knownProjects" :busy="humanBusy" @assign="assignHuman" @inspect="inspectHuman" />
         </div></template>
       </details>
+      </template>
     </details>
 
     <ActivityDetailsPanel v-if="humanDetails" :target="humanDetails" :invoker="humanDetailsInvoker" @close="humanDetails=null" @review="openHumanReview" />

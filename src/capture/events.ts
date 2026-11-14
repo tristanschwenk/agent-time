@@ -11,6 +11,8 @@ export interface CaptureEvent {
 }
 export interface Interval extends WorkMetadata {
   start: number; end: number; state: 'running' | 'turn' | 'grouped' | 'waiting' | 'human'; proof: 'observed' | 'inferred';
+  /** Compact display responses retain only proof presence; request details for IDs. */
+  observedEvidence?:boolean;
   sourceEventIds: string[]; hostId?: string; workspaceId?: string; sessionId?: string; agentId?: string;
   provider?: string; runId?: string; taskId?: string; dispatchId?: string; child?: boolean;
   /** Time a background shell ran without hook events; not capped by agent idleness. */
