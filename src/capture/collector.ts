@@ -490,7 +490,10 @@ export class Collector {
     return snapshot;
   }
   private dayReviewSnapshot(date:string){
-    const day=this.viewedDaySummary(date).value,groups=groupHumanReview(day.intervals),pending=groups.filter(group=>['unmatched','conflict'].includes(humanReviewState(group))),captured=groups.filter(group=>humanReviewState(group)==='captured'),unmatched=pending.filter(group=>humanReviewState(group)==='unmatched'),conflicts=pending.filter(group=>humanReviewState(group)==='conflict'),gaps=unobservedGaps(day.intervals);
+    return this.reviewSnapshot(date,this.viewedDaySummary(date).value);
+  }
+  private reviewSnapshot(date:string,day:Summary){
+    const groups=groupHumanReview(day.intervals),pending=groups.filter(group=>['unmatched','conflict'].includes(humanReviewState(group))),captured=groups.filter(group=>humanReviewState(group)==='captured'),unmatched=pending.filter(group=>humanReviewState(group)==='unmatched'),conflicts=pending.filter(group=>humanReviewState(group)==='conflict'),gaps=unobservedGaps(day.intervals);
     const notes=this.store.manualNotes(date);
     // The fingerprint ignores interval order: a bounded day window can list the
     // same intervals in another order than a replay of the whole history did.
@@ -748,7 +751,7 @@ export class Collector {
   }
   private persistedHomeKey(date:string):string|undefined{
     const bounds=localDayBounds(date);if(Date.now()/1000<bounds.to)return;
-    try{const review=this.reviewData();return createHash('sha256').update(JSON.stringify([2,bounds,this.summaryOptions(),this.surfaces.countTaskCounters,this.store.projectionSignature(windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold)),review.decisions,review.splits,[...this.resources()],this.surfaces.countTaskCounters?this.reportedWork(date):[]])).digest('hex');}catch{return;}
+    try{const review=this.reviewData();return createHash('sha256').update(JSON.stringify([3,bounds,this.summaryOptions(),this.surfaces.countTaskCounters,this.store.projectionSignature(windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold)),review.decisions,review.splits,this.store.manualNotes(date),this.store.dayReview(date),[...this.resources()],this.surfaces.countTaskCounters?this.reportedWork(date):[]])).digest('hex');}catch{return;}
   }
   versionedHomeResponse(date:string,maxAgeMs=0,since?:string){
     const key=this.persistedHomeKey(date),token=key?`h-${key.slice(0,60)}`:undefined;
@@ -764,7 +767,7 @@ export class Collector {
     if(since===token)return {unchanged:true,token};
     const hit=this.homeSnapshots.get(date,token);
     if(hit)return {...hit.value as HomeSummary,token};
-    const value=compactHome(snapshot.value);this.homeSnapshots.put(date,token,value,token);
+    const full=snapshot.value,value=compactHome(full),{fingerprint:_,...review}=this.reviewSnapshot(date,full);value.home.review=review;this.homeSnapshots.put(date,token,value,token);
     return {...value,token};
   }
   private tokenForSummary(summary:Summary){

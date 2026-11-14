@@ -344,6 +344,8 @@ function createStore() {
   async function loadDayReview() {
     const attempt = ++dayReviewRequest.value;
     const date = selectedDate.value;
+    const cached=page.value==='today'?(summary.value as Partial<HomeSummary>).home?.review:undefined;
+    if(cached){dayReview.value={...cached,backlog:[]};dayReviewLoading.value=false;backlogLoading.value=false;return;}
     dayReviewLoading.value = true;
     backlogLoading.value = false;
     try {

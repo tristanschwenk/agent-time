@@ -2,7 +2,8 @@ import{agentSessionKey}from'./session-identity.ts';
 import{buildAppReviewGroups,reviewContextGroups}from'./review-app-groups.ts';
 import type{Summary,Interval}from'./events.ts';
 import{groupHumanReview,humanReviewState}from'./human-review.ts';
-export type HomeSummary=Summary&{home:{version:1;reviewBadge:number;reviewPending:number;reviewCaptured:number}};
+export interface HomeReviewStatus{date:string;completedAt:number|null;stale:boolean;hasActivity:boolean;pendingGroups:number;capturedGroups:number;unmatchedSeconds:number;conflicts:number;gaps:number;}
+export type HomeSummary=Summary&{home:{review?:HomeReviewStatus;version:1;reviewBadge:number;reviewPending:number;reviewCaptured:number}};
 /** Display periods only. Original evidence and visit boundaries remain in the full summary. */
 export function compactHome(summary:Summary):HomeSummary{
  // Human/session matching considers every root's whole observed window. Merging

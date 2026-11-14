@@ -8,7 +8,7 @@ test('selected day appears before backlog and a stale backlog cannot replace it'
  const pending:Array<{date:string;full:boolean;resolve:(v:any)=>void}>=[];
  const selectedDate=ref('2026-11-10'),page=ref('review'),dayReview=ref<any>(null),dayReviewLoading=ref(false),backlogLoading=ref(false);
  const transport={status:(date:string,full:boolean)=>new Promise(resolve=>pending.push({date,full,resolve}))};
- const bindings={selectedDate,page,dayReview,dayReviewLoading,backlogLoading,dayReviewRequest:ref(0),dayReviewTransport:transport};
+ const bindings={selectedDate,page,summary:ref({}),dayReview,dayReviewLoading,backlogLoading,dayReviewRequest:ref(0),dayReviewTransport:transport};
  const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const load=new Function(...Object.keys(bindings),code+';return loadDayReview;')(...Object.values(bindings));
  const first=load();assert.equal(pending[0]!.full,false);
@@ -37,3 +37,5 @@ test('cooperative backlog yields between days and preserves exact synchronous ou
   assert.deepEqual(await reply,expected);assert.equal(served,true);
  }finally{await collector.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('Home uses its validated review metadata without a second proof-loading request',async()=>{const source=readFileSync(new URL('../src/ui/store.ts',import.meta.url),'utf8').match(/  async function loadDayReview\(\) \{[\s\S]*?\n  }/)![0];let calls=0;const review={date:'2026-11-07',completedAt:10,stale:false,hasActivity:true,pendingGroups:0,capturedGroups:2,unmatchedSeconds:0,conflicts:0,gaps:0};const bindings={selectedDate:ref(review.date),page:ref('today'),summary:ref({home:{review}}),dayReview:ref<any>(null),dayReviewLoading:ref(false),backlogLoading:ref(false),dayReviewRequest:ref(0),dayReviewTransport:{status:()=>{calls++;return Promise.resolve({wrong:true});}}};const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;await new Function(...Object.keys(bindings),code+';return loadDayReview;')(...Object.values(bindings))();assert.equal(calls,0);assert.deepEqual(bindings.dayReview.value,{...review,backlog:[]});});
