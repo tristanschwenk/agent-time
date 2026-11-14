@@ -131,7 +131,7 @@ export class Collector {
   private pressureQueued=false;private pressureRecovery:Promise<void>|undefined;
   private storageResumeTimer:ReturnType<typeof setTimeout>|undefined;
   private storageResumeCheck:Promise<void>|undefined;private closing=false;
-  private readStorageUsage(){return quickStorageUsage(this.output);}
+  private readStorageUsage(){let usage=quickStorageUsage(this.output);if(storagePolicyDecision(usage,this.surfaces.storageLimitMB)!=='ok'&&this.projection?.discard())usage=quickStorageUsage(this.output);return usage;}
   private runPressureCompression(){return runStorageTask<PressureRecoveryResult>({op:'pressure',database:join(this.output,'events.sqlite'),output:this.output,now:Date.now()/1000});}
   private releaseIdleLock(){
     if(!this.running&&!this.starting&&!this.stopping&&!this.pressureQueued&&!this.pressureRecovery&&this.lockOwned){
@@ -235,7 +235,7 @@ export class Collector {
     this.linear=new LinearConnection(output,keychainHelper(keychainPath));
     this.loadSettings();
     this.surfaceHistory=this.store.settingsEvents().sort((a,b)=>a.observedAt-b.observedAt);
-    this.projection=new PeriodProjection(join(output,'derived-periods.sqlite'));this.days=new DaySummaries(this.store,()=>this.summaryOptions(),32*1024*1024,this.projection);
+    this.projection=new PeriodProjection(join(output,'derived-periods.sqlite'),64*1024*1024,bytes=>{const usage=quickStorageUsage(output);return !usage.truncated&&usage.managedBytes+bytes<this.surfaces.storageLimitMB*1024*1024*.9;});this.days=new DaySummaries(this.store,()=>this.summaryOptions(),32*1024*1024,this.projection);
     // Share the store's connection: a second connection's commits would look
     // like foreign writes and invalidate every summary cache once a minute.
     this.usageReader=new UsageReader(this.store.database,undefined,this.reader);this.hookInstallation=new HookInstallation(output);this.mcpInstallation=new McpInstallation(output);this.claudeStatusLine=new ClaudeStatusLineInstallation(output);this.syncUsage();
@@ -746,7 +746,19 @@ export class Collector {
     const snapshot=this.viewedDaySummary(date,maxAgeMs);
     return since===snapshot.token?{unchanged:true,token:snapshot.token}:{...snapshot.value,token:snapshot.token};
   }
-  versionedHomeResponse(date:string,maxAgeMs=0,since?:string){const value=this.versionedHomeSummary(date,maxAgeMs,since);return 'unchanged'in value?value:encodeHome(value);}
+  private persistedHomeKey(date:string):string|undefined{
+    const bounds=localDayBounds(date);if(Date.now()/1000<bounds.to)return;
+    try{const review=this.reviewData();return createHash('sha256').update(JSON.stringify([1,bounds,this.summaryOptions(),this.surfaces.countTaskCounters,this.store.projectionSignature(windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold)),review.decisions,review.splits,[...this.resources()],this.surfaces.countTaskCounters?this.reportedWork(date):[]])).digest('hex');}catch{return;}
+  }
+  versionedHomeResponse(date:string,maxAgeMs=0,since?:string){
+    const key=this.persistedHomeKey(date),token=key?`h-${key.slice(0,60)}`:undefined;
+    if(token&&since===token)return {unchanged:true as const,token};
+    const cached=key?this.projection.getHome(date,key):undefined;if(cached)return {...cached,token:token!};
+    const value=this.versionedHomeSummary(date,maxAgeMs,key?undefined:since);if('unchanged'in value)return value;
+    const wire=encodeHome(value);
+    if(key&&key===this.persistedHomeKey(date)){wire.token=token!;this.projection.putHome(date,key,wire);}
+    return wire;
+  }
   versionedHomeSummary(date:string,maxAgeMs=0,since?:string):HomeSummary&{token:string}|{unchanged:true;token:string}{
     const snapshot=this.viewedDaySummary(date,maxAgeMs),token=`h-${snapshot.token}`;
     if(since===token)return {unchanged:true,token};

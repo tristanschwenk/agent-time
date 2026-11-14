@@ -262,7 +262,7 @@ function createStore() {
     try {
       const restore=!sameScope?summaryPagesCache.get(cacheKey):undefined;
       const cached=restore?await restore:undefined;
-      if(revision!==summaryRevision||date!==selectedDate.value)return;
+      if(revision!==summaryRevision||date!==selectedDate.value||kind!==(page.value==='today'&&detailsDate!==date?'home':'full'))return;
       const nextRequest = due
         ? (kind==='home'?transport.homeSince:transport.summarySince)(date, background, sameScope ? summaryToken : cached?.token)
         : Promise.resolve(null);
@@ -270,7 +270,7 @@ function createStore() {
         if (revision === summaryRevision && date === selectedDate.value) reportedWork.value = markRaw(reports);
       }).catch(() => { /* Optional declarations must not delay measured activity. */ }).finally(() => { reportedWorkInflight = undefined; });
       const next = await nextRequest;
-      if (revision !== summaryRevision || date !== selectedDate.value) return;
+      if (revision !== summaryRevision || date !== selectedDate.value || kind!==(page.value==='today'&&detailsDate!==date?'home':'full')) return;
       if (next && 'unchanged' in next) {
         if(cached){storeSummary(cached.value,date);summaryToken=next.token;}
         summaryKind=kind;
@@ -402,7 +402,7 @@ function createStore() {
     if (windowVisible.value && next === 'settings' && settingsSection.value === 'connections' && connectionsSection.value === 'health') void pollers.health.refresh();
     if (windowVisible.value && summaryLoaded.value && next === 'review') void pollers.dayReview.refresh();
   });
-  watch([page,reportsSection],()=>{if(showsSummary.value&&page.value!=='today'&&'home'in summary.value){summaryRevision++;summaryLoaded.value=false;summary.value=emptySummary;summaryKey='';summaryToken=undefined;void pollers.summary.refresh();}});
+  watch([page,reportsSection],()=>{if(showsSummary.value&&(!summaryLoaded.value||summaryKind!==(page.value==='today'&&detailsDate!==selectedDate.value?'home':'full'))){summaryRevision++;summaryLoaded.value=false;summary.value=emptySummary;summaryKey='';summaryToken=undefined;void pollers.summary.refresh();}});
   // Coming back into view: refresh straight away rather than waiting for the next tick.
   watch(windowVisible, (shown) => {
     if (shown) {

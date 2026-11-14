@@ -23,7 +23,7 @@ function loader(cache:any,read:(date:string,background:boolean,since?:string)=>P
  const isRetryableError=()=>false,humanizeError=String;
  function storeSummary(value,date){summary.value=value;summaryLoaded.value=true;summaryKey=date+'|fixture';summaryFetchedAt=Date.now();summaryToken=undefined;}
  ${code}
- return {loadSummary,change(date){selectedDate.value=date;summaryRevision++;summaryKey='';summaryToken=undefined;summary.value=null;summaryLoaded.value=false;}};`);
+ return {loadSummary,navigate(next){page.value=next;},change(date){selectedDate.value=date;summaryRevision++;summaryKey='';summaryToken=undefined;summary.value=null;summaryLoaded.value=false;}};`);
  return{...make(selectedDate,summary,loaded,reports,error,cache,{summarySince:read,homeSince:read},{list:async()=>[]},markRaw,initialPage),summary,loaded};
 }
 
@@ -43,3 +43,5 @@ test('an invalid token uses fresh data; a late response never restores the previ
 });
 
 test('Home navigation uses an isolated compact token cache',async()=>{const{SummaryPageCache}=await import('../src/ui/summary-page-cache.ts');const cache=new SummaryPageCache();const home={...value,home:{version:1,reviewBadge:1,reviewPending:2,reviewCaptured:3}};await cache.put('home:2026-10-20','h-saved',home);await cache.put('2026-10-20','full',value);const calls:any[]=[];const state=loader(cache,async(...args)=>{calls.push(args);return{unchanged:true,token:'h-saved'};},'today');await state.loadSummary();assert.equal(calls[0][2],'h-saved');assert.deepEqual(state.summary.value,home);});
+
+test('late compact Home response cannot populate Review while first Home read is pending',async()=>{const{SummaryPageCache}=await import('../src/ui/summary-page-cache.ts');let finish!:(value:any)=>void;const state=loader(new SummaryPageCache(),async()=>new Promise(resolve=>finish=resolve),'today');const request=state.loadSummary();state.navigate('review');finish({...value,home:{version:1,reviewBadge:1,reviewPending:1,reviewCaptured:0},token:'h-old'});await request;assert.equal(state.loaded.value,false);assert.equal(state.summary.value,null);});
