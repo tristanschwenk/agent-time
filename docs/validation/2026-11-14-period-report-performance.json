@@ -1,0 +1,99 @@
+{
+  "date": "2026-11-14",
+  "baselineCommit": "817942babe458fb72ed586042f2ec5d449c53f2e",
+  "implementationCommit": "b275637e526557340826fc6c70948a2298a76ce7",
+  "node": "26.9.0",
+  "fixture": {
+    "bytes": 662126592,
+    "observations": 1512772
+  },
+  "period": {
+    "from": "2026-10-14",
+    "through": "2026-11-12",
+    "timezone": "Europe/Paris",
+    "days": 30
+  },
+  "method": {
+    "cold": "new Collector, fresh cloned database, OS disk cache not purged",
+    "warm": "run 0 then run 1 in the same Collector process; processPeakRSSKiB is cumulative",
+    "timing": "report only; Collector construction excluded",
+    "rss": "whole process, including construction"
+  },
+  "time": {
+    "before": {
+      "milliseconds": 171783,
+      "maxRSSKiB": 816016,
+      "resultSha256": "bce83f2a3c0e0a30ce70da31e7272f7b596c19938536f76f00d30217db433006"
+    },
+    "after": {
+      "milliseconds": 43044,
+      "maxRSSKiB": 750848,
+      "resultSha256": "bce83f2a3c0e0a30ce70da31e7272f7b596c19938536f76f00d30217db433006"
+    },
+    "repeatBefore": [
+      {
+        "run": 0,
+        "milliseconds": 167636,
+        "processPeakRSSKiB": 774720,
+        "resultSha256": "bce83f2a3c0e0a30ce70da31e7272f7b596c19938536f76f00d30217db433006"
+      },
+      {
+        "run": 1,
+        "milliseconds": 170372,
+        "processPeakRSSKiB": 776864,
+        "resultSha256": "bce83f2a3c0e0a30ce70da31e7272f7b596c19938536f76f00d30217db433006"
+      }
+    ],
+    "repeatAfter": [
+      {
+        "run": 0,
+        "milliseconds": 43605,
+        "processPeakRSSKiB": 726704,
+        "resultSha256": "bce83f2a3c0e0a30ce70da31e7272f7b596c19938536f76f00d30217db433006"
+      },
+      {
+        "run": 1,
+        "milliseconds": 41262,
+        "processPeakRSSKiB": 738608,
+        "resultSha256": "bce83f2a3c0e0a30ce70da31e7272f7b596c19938536f76f00d30217db433006"
+      }
+    ],
+    "allCompleteResultsEqual": true,
+    "reviewedCsvSha256": "11dae84e0c16fc2fa66ed7053d870b2db97a076b181dfe2eff8ec808307b197f"
+  },
+  "billing": {
+    "before": {
+      "milliseconds": 59349,
+      "maxRSSKiB": 760192,
+      "exportSha256": "e2a1c9e35a1bc2dd2505221729878d0bc789822b46fa2f844372b7d8f9d1c621",
+      "progressMessages": 61
+    },
+    "after": {
+      "milliseconds": 53650,
+      "maxRSSKiB": 703968,
+      "exportSha256": "e2a1c9e35a1bc2dd2505221729878d0bc789822b46fa2f844372b7d8f9d1c621",
+      "progressMessages": 61
+    },
+    "contentsEqualExceptCreatedAt": true,
+    "sameReportId": true,
+    "sameCsv": true
+  },
+  "preservation": {
+    "observationsAndSequenceExact": true,
+    "storedEventsSha256": "70905d08ed3d03516fbdaaef6e01875cdb5dd9bd447563e935593454448dc53d",
+    "humanDecisionsExact": true,
+    "splitsExact": true,
+    "dayReviewsExact": true,
+    "billingProjectsExact": true,
+    "savedBillingReportsExact": true
+  },
+  "verification": {
+    "nodeTests": 701,
+    "nativeTests": 36,
+    "independentReviewFocusedTests": 37,
+    "build": true,
+    "sidecars": true,
+    "packagedProgressSmoke": true,
+    "browserNavigationAndRealProgress": true
+  }
+}

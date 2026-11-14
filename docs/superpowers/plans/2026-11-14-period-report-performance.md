@@ -2,7 +2,7 @@
 
 > Execute inline using superpowers:executing-plans. User explicitly requested implementation without another design approval round. Preserve all results; no release requested.
 
-Goal: reduce 30-day report compute/RAM and show actual day progress. Existing Time baseline: 183–217 s and 690–805 MiB on an isolated 646 MiB database. Keep counting, attribution, policies, reports and exports unchanged. No schema changes or data deletion.
+Goal: reduce 30-day report compute/RAM and show actual day progress. Measured Time baseline: 171.8 s and 796.9 MiB peak RSS on an isolated 631.5 MiB database. Keep counting, attribution, policies, reports and exports unchanged. No schema changes or data deletion.
 
 Design: profile frozen copies, remove repeated work at existing seams, keep mathematical reducers and iteration order. Add bounded job progress keyed by UUID, poll it from the retained Time report view; Billing keeps its existing real progress. Progress reaches completion only when the result is ready, and stale responses cannot replace a newer scope. Counters, split decisions, midnight/DST, filtered exports and saved billing snapshots are differential/regression gates.
 
@@ -25,7 +25,7 @@ Design: profile frozen copies, remove repeated work at existing seams, keep math
 
 ### Task 3: Prove equivalence and measured improvement
 
-- [ ] Compare complete JSON results, reviewed CSV and all day/project totals for baseline/candidate on the same frozen 30-day history, cold and warm.
-- [ ] Check representative Billing reports remain equivalent, including saved report IDs/exports.
-- [ ] Run full Node tests, typecheck/build and native bridge tests. Inspect browser loading feedback and navigation on the isolated database.
-- [ ] Fresh-context whole-branch final review, fix important findings, document actual timings/RSS and remaining limits. Keep ready for review; do not publish without a new request.
+- [x] Compare complete JSON results, reviewed CSV and all day/project totals for baseline/candidate on the same frozen 30-day history, cold and warm.
+- [x] Check representative Billing reports remain equivalent, including saved report IDs/exports.
+- [x] Run full Node tests, typecheck/build and native bridge tests. Inspect browser loading feedback and navigation on the isolated database.
+- [x] Fresh-context whole-branch final review, fix important findings, document actual timings/RSS and remaining limits. Keep ready for review; do not publish without a new request.
