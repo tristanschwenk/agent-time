@@ -1,0 +1,257 @@
+{
+  "date": "2026-11-14",
+  "baselineCommit": "15acb75",
+  "candidateCommit": "f786f2a",
+  "fixture": {
+    "bytes": 662126592,
+    "events": 1512772,
+    "capturePaused": true,
+    "countTaskCounters": true
+  },
+  "method": "Separate fresh Collector processes, frozen clone of same history/settings. OS cache not flushed; one sequence, not statistically significant. Six dates 07,12,06,12,07,07. Conditional tokens retained, summary graphs not retained by harness. Complete wire result SHA excludes only token; unchanged replies use previous validated result hash. RSS is cumulative process high-water mark, not total app RAM.",
+  "before": [
+    {
+      "date": "2026-11-07",
+      "unchanged": false,
+      "computeMs": 2598.6134589999997,
+      "serializeMs": 41.59391600000072,
+      "payloadBytes": 12184518,
+      "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+      "recomputations": 1,
+      "peakRssMiB": 547.921875,
+      "rssMiB": 547.921875,
+      "snapshotsBytes": 0,
+      "evidenceBytes": 0
+    },
+    {
+      "date": "2026-11-12",
+      "unchanged": false,
+      "computeMs": 1806.451333,
+      "serializeMs": 68.46137499999986,
+      "payloadBytes": 13701057,
+      "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+      "recomputations": 1,
+      "peakRssMiB": 612.90625,
+      "rssMiB": 612.71875,
+      "snapshotsBytes": 0,
+      "evidenceBytes": 0
+    },
+    {
+      "date": "2026-11-06",
+      "unchanged": false,
+      "computeMs": 1812.1331250000003,
+      "serializeMs": 32.3173340000003,
+      "payloadBytes": 9275986,
+      "resultSha256": "5624baae3a38dc811e90d4d1bac1f6e6f0e03c619e57ac5e339528f8996847c5",
+      "recomputations": 1,
+      "peakRssMiB": 675.5625,
+      "rssMiB": 675.578125,
+      "snapshotsBytes": 0,
+      "evidenceBytes": 0
+    },
+    {
+      "date": "2026-11-12",
+      "unchanged": false,
+      "computeMs": 1009.7358750000003,
+      "serializeMs": 63.693999999999505,
+      "payloadBytes": 13701057,
+      "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+      "recomputations": 1,
+      "peakRssMiB": 867.046875,
+      "rssMiB": 867.046875,
+      "snapshotsBytes": 0,
+      "evidenceBytes": 0
+    },
+    {
+      "date": "2026-11-07",
+      "unchanged": false,
+      "computeMs": 2089.381207999999,
+      "serializeMs": 31.663375000000087,
+      "payloadBytes": 12184518,
+      "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+      "recomputations": 1,
+      "peakRssMiB": 916.3125,
+      "rssMiB": 832.421875,
+      "snapshotsBytes": 0,
+      "evidenceBytes": 0
+    },
+    {
+      "date": "2026-11-07",
+      "unchanged": true,
+      "computeMs": 700.625,
+      "serializeMs": 0.0018749999999272404,
+      "payloadBytes": 39,
+      "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+      "recomputations": 0,
+      "peakRssMiB": 916.3125,
+      "rssMiB": 833.125,
+      "snapshotsBytes": 0,
+      "evidenceBytes": 0
+    }
+  ],
+  "after": [
+    {
+      "date": "2026-11-07",
+      "unchanged": false,
+      "computeMs": 3187.7165000000005,
+      "serializeMs": 38.218541999999616,
+      "payloadBytes": 12184518,
+      "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+      "recomputations": 1,
+      "peakRssMiB": 486.234375,
+      "rssMiB": 486.25,
+      "snapshotsBytes": 1882534,
+      "evidenceBytes": 1341826
+    },
+    {
+      "date": "2026-11-12",
+      "unchanged": false,
+      "computeMs": 1849.634583,
+      "serializeMs": 62.75658400000066,
+      "payloadBytes": 13701057,
+      "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+      "recomputations": 1,
+      "peakRssMiB": 611.453125,
+      "rssMiB": 611.390625,
+      "snapshotsBytes": 3731822,
+      "evidenceBytes": 1342070
+    },
+    {
+      "date": "2026-11-06",
+      "unchanged": false,
+      "computeMs": 1900.6717080000008,
+      "serializeMs": 26.467375000000175,
+      "payloadBytes": 9275986,
+      "resultSha256": "5624baae3a38dc811e90d4d1bac1f6e6f0e03c619e57ac5e339528f8996847c5",
+      "recomputations": 1,
+      "peakRssMiB": 670.71875,
+      "rssMiB": 641.328125,
+      "snapshotsBytes": 5095604,
+      "evidenceBytes": 2159926
+    },
+    {
+      "date": "2026-11-12",
+      "unchanged": true,
+      "computeMs": 25.89983299999949,
+      "serializeMs": 0.0015000000003055902,
+      "payloadBytes": 39,
+      "resultSha256": "9037afed4868262ac2322ef37c85719f7ddb006ccb93af84b7d224f96b693107",
+      "recomputations": 0,
+      "peakRssMiB": 670.71875,
+      "rssMiB": 641.328125,
+      "snapshotsBytes": 5095604,
+      "evidenceBytes": 2159926
+    },
+    {
+      "date": "2026-11-07",
+      "unchanged": true,
+      "computeMs": 42.20904100000007,
+      "serializeMs": 0.0010000000002037268,
+      "payloadBytes": 39,
+      "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+      "recomputations": 0,
+      "peakRssMiB": 670.71875,
+      "rssMiB": 586.875,
+      "snapshotsBytes": 5095604,
+      "evidenceBytes": 2159926
+    },
+    {
+      "date": "2026-11-07",
+      "unchanged": true,
+      "computeMs": 22.408292000000074,
+      "serializeMs": 0.0010000000002037268,
+      "payloadBytes": 39,
+      "resultSha256": "deb58abd64c0272fcf1ddf219f1f46d2be89f8e352dc0ba6ff68224812926d20",
+      "recomputations": 0,
+      "peakRssMiB": 670.71875,
+      "rssMiB": 586.875,
+      "snapshotsBytes": 5095604,
+      "evidenceBytes": 2159926
+    }
+  ],
+  "uiBefore": [
+    {
+      "date": "2026-11-07",
+      "visit": "first",
+      "readyMs": 3561.1,
+      "responseMs": 3138.6,
+      "payloadBytes": 12184573
+    },
+    {
+      "date": "2026-11-12",
+      "visit": "first",
+      "readyMs": 3340.1,
+      "responseMs": 2047.2,
+      "payloadBytes": 13701112
+    },
+    {
+      "date": "2026-11-06",
+      "visit": "first",
+      "readyMs": 3084.2,
+      "responseMs": 2704,
+      "payloadBytes": 9276041
+    },
+    {
+      "date": "2026-11-12",
+      "visit": "revisit",
+      "readyMs": 1842.8,
+      "responseMs": 1314.6,
+      "payloadBytes": 13701112
+    },
+    {
+      "date": "2026-11-07",
+      "visit": "revisit",
+      "readyMs": 3775.6,
+      "responseMs": 3352,
+      "payloadBytes": 12184573
+    }
+  ],
+  "uiAfter": [
+    {
+      "date": "2026-11-07",
+      "visit": "first",
+      "readyMs": 3685.6,
+      "responseMs": 3089.1,
+      "payloadBytes": 12184573
+    },
+    {
+      "date": "2026-11-12",
+      "visit": "first",
+      "readyMs": 2774.5,
+      "responseMs": 1834.7,
+      "payloadBytes": 13701112
+    },
+    {
+      "date": "2026-11-06",
+      "visit": "first",
+      "readyMs": 2468.8,
+      "responseMs": 2054.7,
+      "payloadBytes": 9276041
+    },
+    {
+      "date": "2026-11-12",
+      "visit": "return",
+      "readyMs": 920.8,
+      "responseMs": 251.6,
+      "payloadBytes": 94
+    },
+    {
+      "date": "2026-11-07",
+      "visit": "return",
+      "readyMs": 708.7,
+      "responseMs": 99.1,
+      "payloadBytes": 94
+    }
+  ],
+  "uiMethod": "IAB Chrome 659x965 local Vite preview; watcher to two animation frames after loaded, first mark per navigation, same fixture as earlier baseline. Not packaged native WebView. Polling resources not mistaken for navigation. After sample heap about82-141MiB during run; samples are not peak or total renderer RSS.",
+  "checks": {
+    "fullSuite": {
+      "pass": 714,
+      "fail": 0
+    },
+    "newTests": 13,
+    "build": "pass, preexisting bundle-size warning",
+    "exactHashes": true,
+    "packagedNodeSmoke": "pass: bundled Node26.9 + packaged Collector, closed-day conditional cache hit"
+  }
+}
