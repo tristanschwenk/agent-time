@@ -1,0 +1,165 @@
+{
+  "date": "2026-11-14",
+  "baselineCommit": "8eddec0",
+  "implementationCommit": "487e4e5",
+  "fixture": {
+    "events": 1512772,
+    "bytes": 662126592,
+    "capturePaused": true,
+    "countTaskCounters": true
+  },
+  "method": {
+    "backend": "One isolated Collector process per phase, same frozen source events/settings. Three dates 7,12,6 November, full response each. No forced GC and OS file cache not purged. One sequence per phase; descriptive measurements, not statistical guarantees. Before uses full Home transport; first-fill/restart use normalized Home wire. RSS sampled after real JSON encoding; peak is cumulative Node high-water mark and excludes UI/other processes. No equivalence graph allocations inside performance harness. Final baseline serves the full summary plus the separate review-status request previously sent by Home; candidate includes review metadata in its one response and reuses it locally. computeMs sums those old service computations, with separate primary/review fields retained. First status extraction during build uses the unchanged existing fingerprint logic.",
+    "equivalence": "Separate process: assert.deepStrictEqual of entire baseline/candidate typed full summaries; compact decoded display JSON compared to compactHome(baseline). SHA256 sorts all keys and excludes only root transport token. Home proof-period reads counted before detail retrieval."
+  },
+  "before": {
+    "rows": [
+      {
+        "date": "2026-11-07",
+        "computeMs": 2882.8067500000006,
+        "primaryComputeMs": 2704.145542,
+        "reviewComputeMs": 178.66120800000044,
+        "serializeMs": 42.375665999999,
+        "payloadBytes": 12184708,
+        "primaryPayloadBytes": 12184518,
+        "reviewPayloadBytes": 190,
+        "rssMiB": 530.640625,
+        "peakRssMiB": 530.640625,
+        "rawComputations": 1
+      },
+      {
+        "date": "2026-11-12",
+        "computeMs": 1778.8866249999992,
+        "primaryComputeMs": 1593.5056669999994,
+        "reviewComputeMs": 185.38095799999974,
+        "serializeMs": 67.65841699999964,
+        "payloadBytes": 13701245,
+        "primaryPayloadBytes": 13701057,
+        "reviewPayloadBytes": 188,
+        "rssMiB": 601.859375,
+        "peakRssMiB": 601.875,
+        "rawComputations": 2
+      },
+      {
+        "date": "2026-11-06",
+        "computeMs": 1996.646667000001,
+        "primaryComputeMs": 1879.746709,
+        "reviewComputeMs": 116.89995799999997,
+        "serializeMs": 29.553373999999167,
+        "payloadBytes": 9276176,
+        "primaryPayloadBytes": 9275986,
+        "reviewPayloadBytes": 190,
+        "rssMiB": 641.203125,
+        "peakRssMiB": 677.984375,
+        "rawComputations": 3
+      }
+    ],
+    "projectionBytes": 0
+  },
+  "firstFill": {
+    "rows": [
+      {
+        "date": "2026-11-07",
+        "computeMs": 3449.548667,
+        "serializeMs": 10.469041000000288,
+        "payloadBytes": 3215195,
+        "rssMiB": 705.15625,
+        "peakRssMiB": 722.203125,
+        "rawComputations": 1
+      },
+      {
+        "date": "2026-11-12",
+        "computeMs": 2174.14725,
+        "serializeMs": 3.0268749999995634,
+        "payloadBytes": 1103067,
+        "rssMiB": 679.796875,
+        "peakRssMiB": 751,
+        "rawComputations": 2
+      },
+      {
+        "date": "2026-11-06",
+        "computeMs": 2397.8420829999995,
+        "serializeMs": 6.49395800000093,
+        "payloadBytes": 1690112,
+        "rssMiB": 798.421875,
+        "peakRssMiB": 798.421875,
+        "rawComputations": 3
+      }
+    ],
+    "projectionBytes": 17244160
+  },
+  "restart": {
+    "rows": [
+      {
+        "date": "2026-11-07",
+        "computeMs": 1514.558209,
+        "serializeMs": 11.36245800000006,
+        "payloadBytes": 3215195,
+        "rssMiB": 342.375,
+        "peakRssMiB": 342.375,
+        "rawComputations": 0
+      },
+      {
+        "date": "2026-11-12",
+        "computeMs": 302.581917,
+        "serializeMs": 6.417791999999736,
+        "payloadBytes": 1103067,
+        "rssMiB": 344.53125,
+        "peakRssMiB": 344.53125,
+        "rawComputations": 0
+      },
+      {
+        "date": "2026-11-06",
+        "computeMs": 742.9809169999994,
+        "serializeMs": 7.561500000000706,
+        "payloadBytes": 1690112,
+        "rssMiB": 344.09375,
+        "peakRssMiB": 353.046875,
+        "rawComputations": 0
+      }
+    ],
+    "projectionBytes": 17244160
+  },
+  "equivalence": [
+    {
+      "date": "2026-11-07",
+      "fullHash": "1d2e8815d6569c218553641670c8b35b0e470469e6c770a97066e65a3c78a8c4",
+      "baselineFullHash": "1d2e8815d6569c218553641670c8b35b0e470469e6c770a97066e65a3c78a8c4",
+      "proofReadsForHome": 0,
+      "homeHash": "3520402c6fb27813a303c81d816960cf35d6ff4e5c3bbbe237f54938fe2bc52e",
+      "uiScopesVerified": 8
+    },
+    {
+      "date": "2026-11-12",
+      "fullHash": "67dc45a7c0bf074b59c02ae824930c7f1c5e427aaa2088b02e75c12e6a25e9f5",
+      "baselineFullHash": "67dc45a7c0bf074b59c02ae824930c7f1c5e427aaa2088b02e75c12e6a25e9f5",
+      "proofReadsForHome": 0,
+      "homeHash": "53184eeabffcce044c56eeb4a3f8c88648fad781174a5b854db1ba0af6ef1720",
+      "uiScopesVerified": 8
+    },
+    {
+      "date": "2026-11-06",
+      "fullHash": "44811a2d8695bd3369f94a7ead701d245f73076a325f8186701b95cbc5c0aa40",
+      "baselineFullHash": "44811a2d8695bd3369f94a7ead701d245f73076a325f8186701b95cbc5c0aa40",
+      "proofReadsForHome": 0,
+      "homeHash": "6e7156c4dc32bd11b87c05ba48387d3fea6749f9c3bb62d2e9ee60ff6917d90c",
+      "uiScopesVerified": 8
+    }
+  ],
+  "checks": {
+    "nodeTests": 732,
+    "nodeFailures": 0,
+    "nativeTests": 36,
+    "nativeProtocolFocused": "pass",
+    "typecheckBuild": "pass, existing bundle-size warning",
+    "packagedRuntime": "pass: persistent Home wire/token after restart"
+  },
+  "limits": {
+    "chargedCacheBytes": 67108864,
+    "sqliteMainFileCapBytes": 134217728,
+    "rawDayEntries": 32,
+    "compactViewEntries": 32,
+    "admission": "Reserve forthcoming pages plus rollback journal and 1GiB disk reserve; stay below 90 percent of configured managed-storage budget. Evict derived data before capture pressure decisions.",
+    "firstFill": "First fill costs more CPU and transient RAM; read model does not remove original evidence or change formulas."
+  }
+}
