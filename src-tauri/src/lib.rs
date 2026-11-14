@@ -75,7 +75,7 @@ const SHUTDOWN_STOP_TIMEOUT:Duration=Duration::from_secs(3);
 fn is_long_request(method:&str)->bool{
  matches!(method,
   "storage_compact_prepare"|"storage_restore_prepare"|"storage_reclaim"|"export_archive"
-  |"billing_report"|"archive_import"|"archive_preview"|"tracking_cleanup"|"linear_status"|"linear_sync"|"linear_connect"|"linear_disconnect")
+  |"billing_report"|"period_review"|"archive_import"|"archive_preview"|"tracking_cleanup"|"linear_status"|"linear_sync"|"linear_connect"|"linear_disconnect")
 }
 fn request_timeout(method:&str)->Duration{
  if is_long_request(method){LONG_REQUEST_TIMEOUT}else{REQUEST_TIMEOUT}
@@ -316,7 +316,7 @@ fn validate_method(method:&str,params:&Value)->Result<(),String>{
   "status"|"summary"|"capture_health"|"capture_checks"|"diagnostics"|"privacy_exclusions"|"export_archive"|"archive_list"|"storage_usage"|"storage_reclaim"|"storage_compact_prepare"|"storage_replacement_cancel"|"storage_replacement_status"|"storage_replacement_result"|"stop"|"tray_status"|"usage"|"hooks_status"|"hooks_verify"|"hooks_dismiss"|"mcp_status"|"claude_status_line_status"|"tracking_cleanup_preview"|"website_projects"|"billing_projects"|"linear_status"|"review_history" if p.is_empty()=>Ok(()),
   "billing_project_save" if p.keys().all(|k|k=="project"||k=="expectedRevision") && p.get("project").map(|v|v.is_object()&&v.to_string().len()<=262144).unwrap_or(false) && p.get("expectedRevision").map(|v|v.as_u64().is_some()).unwrap_or(true)=>Ok(()),
   "billing_report_history" if p.keys().all(|k|["project","historyCursor","limit"].contains(&k.as_str())) && p.get("project").and_then(Value::as_str).map(|s|!s.trim().is_empty()&&s.len()<=4096&&!s.chars().any(char::is_control)).unwrap_or(false) && p.get("limit").map(|v|v.as_u64().map(|n|(1..=50).contains(&n)).unwrap_or(false)).unwrap_or(true) && p.get("historyCursor").map(|v|v.as_str().map(|s|!s.is_empty()&&s.len()<=16&&!s.starts_with('0')&&s.bytes().all(|b|b.is_ascii_digit())&&s.parse::<u64>().map(|n|n<=9007199254740991).unwrap_or(false)).unwrap_or(false)).unwrap_or(true)=>Ok(()),
-  "billing_report_progress" if p.len()==1 && p.get("progressId").and_then(Value::as_str).map(billing_progress_id).unwrap_or(false)=>Ok(()),
+  "billing_report_progress" | "period_review_progress" if p.len()==1 && p.get("progressId").and_then(Value::as_str).map(billing_progress_id).unwrap_or(false)=>Ok(()),
   "billing_report" if p.get("progressId").map(|v|v.as_str().map(billing_progress_id).unwrap_or(false)).unwrap_or(true) && p.keys().all(|k|["project","fromDate","toDate","format","detail","reportId","cursor","progressId"].contains(&k.as_str())) && p.get("project").and_then(Value::as_str).map(|s|!s.trim().is_empty()&&s.len()<=4096).unwrap_or(false) && ["fromDate","toDate"].iter().all(|k|p.get(*k).and_then(Value::as_str).map(|s|s.len()==10&&s.bytes().enumerate().all(|(i,b)|if i==4||i==7{b==b'-'}else{b.is_ascii_digit()})).unwrap_or(false)) && p.get("format").map(|v|v.as_str().map(|s|["json","csv","markdown"].contains(&s)).unwrap_or(false)).unwrap_or(true) && p.get("detail").map(|v|v.as_str().map(|s|["summary","daily"].contains(&s)).unwrap_or(false)).unwrap_or(true) && p.get("reportId").map(|v|v.as_str().map(|s|s.len()==36&&s.bytes().all(|b|b.is_ascii_hexdigit()||b==b'-')).unwrap_or(false)).unwrap_or(true) && p.get("cursor").map(|v|p.contains_key("reportId")&&v.as_str().map(|s|!s.is_empty()&&s.len()<=7&&s.bytes().all(|b|b.is_ascii_digit())).unwrap_or(false)).unwrap_or(true)=>Ok(()),
   "linear_sync"|"linear_disconnect" if p.is_empty() || p.len()==1 && p.get("workspaceId").and_then(Value::as_str).map(linear_workspace).unwrap_or(false)=>Ok(()),
   "review_undo" if p.len()==1+usize::from(p.contains_key("date")) && optional_date(p) && p.get("id").and_then(Value::as_str).map(|id|id.len()==36&&id.chars().all(|c|c.is_ascii_hexdigit()||c=='-')).unwrap_or(false)=>Ok(()),
@@ -329,7 +329,7 @@ fn validate_method(method:&str,params:&Value)->Result<(),String>{
   "storage_restore_prepare" if p.len()==2 && p.get("confirmed")==Some(&Value::Bool(true)) && p.get("id").and_then(Value::as_str).map(|id|id.len()>30&&id.len()<100&&id.starts_with("agent-time-")&&(id.ends_with(".sqlite")||id.ends_with(".sqlite.gz"))&&id.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'.')).unwrap_or(false)=>Ok(()),
   "privacy_exclusions_set" if p.len()==1 && p.get("entries").and_then(Value::as_array).map(|entries|entries.len()<=100&&entries.iter().all(|entry|entry.as_object().map(|item|item.len()==2&&["app","site"].contains(&item.get("kind").and_then(Value::as_str).unwrap_or(""))&&item.get("value").and_then(Value::as_str).map(|value|!value.is_empty()&&value.len()<=253).unwrap_or(false)).unwrap_or(false))).unwrap_or(false)=>Ok(()),
   "summary" if (1..=3).contains(&p.len()) && p.keys().all(|k|["date","background","since"].contains(&k.as_str())) && p.get("date").and_then(Value::as_str).map(|date|{let bytes=date.as_bytes();bytes.len()==10&&bytes.iter().enumerate().all(|(i,b)|if i==4||i==7{*b==b'-'}else{b.is_ascii_digit()})}).unwrap_or(false) && p.get("background").map(|v|v.is_boolean()).unwrap_or(true) && p.get("since").map(|v|v.as_str().map(|t|!t.is_empty()&&t.len()<=64).unwrap_or(false)).unwrap_or(true)=>Ok(()),
-  "period_review" if p.keys().all(|k|["fromDate","toDate","project","filters"].contains(&k.as_str())) && ["fromDate","toDate"].iter().all(|k|p.get(*k).and_then(Value::as_str).map(|s|s.len()==10&&s.bytes().enumerate().all(|(i,b)|if i==4||i==7{b==b'-'}else{b.is_ascii_digit()})).unwrap_or(false)) && p.get("project").map(|v|v.as_str().map(|s|s.len()<=4096).unwrap_or(false)).unwrap_or(true) && p.get("filters").map(|v|v.as_object().map(|f|f.iter().all(|(k,v)|["search","app","site","device","assignment"].contains(&k.as_str())&&v.as_str().map(|s|s.len()<=4096&&(k!="assignment"||["all","assigned","unassigned"].contains(&s))).unwrap_or(false))).unwrap_or(false)).unwrap_or(true)=>Ok(()),
+  "period_review" if p.get("progressId").map(|v|v.as_str().map(billing_progress_id).unwrap_or(false)).unwrap_or(true) && p.keys().all(|k|["fromDate","toDate","project","filters","progressId"].contains(&k.as_str())) && ["fromDate","toDate"].iter().all(|k|p.get(*k).and_then(Value::as_str).map(|s|s.len()==10&&s.bytes().enumerate().all(|(i,b)|if i==4||i==7{b==b'-'}else{b.is_ascii_digit()})).unwrap_or(false)) && p.get("project").map(|v|v.as_str().map(|s|s.len()<=4096).unwrap_or(false)).unwrap_or(true) && p.get("filters").map(|v|v.as_object().map(|f|f.iter().all(|(k,v)|["search","app","site","device","assignment"].contains(&k.as_str())&&v.as_str().map(|s|s.len()<=4096&&(k!="assignment"||["all","assigned","unassigned"].contains(&s))).unwrap_or(false))).unwrap_or(false)).unwrap_or(true)=>Ok(()),
   "weekly_review" if p.len()==1 && p.get("startDate").and_then(Value::as_str).map(|date|{let bytes=date.as_bytes();bytes.len()==10&&bytes.iter().enumerate().all(|(i,b)|if i==4||i==7{*b==b'-'}else{b.is_ascii_digit()})}).unwrap_or(false)=>Ok(()),
   "manual_notes" if p.len()==1 && p.get("date").and_then(Value::as_str).map(|date|{let bytes=date.as_bytes();bytes.len()==10&&bytes.iter().enumerate().all(|(i,b)|if i==4||i==7{*b==b'-'}else{b.is_ascii_digit()})}).unwrap_or(false)=>Ok(()),
   "manual_note_add" if p.len()==4 && p.get("start").and_then(Value::as_f64).zip(p.get("end").and_then(Value::as_f64)).map(|(start,end)|start.is_finite()&&end.is_finite()&&end>start&&end-start<=86400.0).unwrap_or(false) && p.get("project").and_then(Value::as_str).map(|value|value.len()<=256).unwrap_or(false) && p.get("note").and_then(Value::as_str).map(|value|!value.trim().is_empty()&&value.len()<=500).unwrap_or(false)=>Ok(()),
@@ -838,6 +838,8 @@ mod audit_protocol_tests {
  fn long_operations_get_long_deadlines() {
   assert_eq!(request_timeout("storage_compact_prepare"),LONG_REQUEST_TIMEOUT);
   assert_eq!(request_timeout("archive_import"),LONG_REQUEST_TIMEOUT);
+  assert_eq!(request_timeout("period_review"),LONG_REQUEST_TIMEOUT);
+  assert_eq!(request_timeout("period_review_progress"),REQUEST_TIMEOUT);
   assert_eq!(request_timeout("status"),REQUEST_TIMEOUT);
  }
 }
@@ -864,6 +866,13 @@ mod audit_protocol_tests {
 }}
 
 #[cfg(test)]mod period_scope_tests{use super::*;
+ #[test]fn period_progress_scope_is_bounded(){
+  let id="12345678-1234-1234-1234-123456789abc";
+  assert!(validate_method("period_review_progress",&json!({"progressId":id})).is_ok());
+  for invalid in [json!({}),json!({"progressId":"../../file"}),json!({"progressId":id,"path":"/tmp"})]{assert!(validate_method("period_review_progress",&invalid).is_err());}
+  assert!(validate_method("period_review",&json!({"fromDate":"2026-10-14","toDate":"2026-11-12","progressId":id})).is_ok());
+  assert!(validate_method("period_review",&json!({"fromDate":"2026-10-14","toDate":"2026-11-12","progressId":false})).is_err());
+ }
  #[test]fn period_review_scope_is_bounded(){
   let scope=json!({"fromDate":"2026-11-01","toDate":"2026-11-14","project":"/repo","filters":{"search":"fix","app":"Browser","site":"example.com","device":"local","assignment":"assigned"}});
   assert!(validate_method("period_review",&scope).is_ok());

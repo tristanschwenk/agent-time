@@ -90,7 +90,11 @@ export function creditTaskCounters(summary:Summary,items:ReportedWorkItem[]):Sum
  if(!counters.length)return summary;
  const intervals=[...summary.intervals],sessions=summary.sessions.map(session=>({...session}));
  const sessionProjectOf=(session:Session)=>projectOf(session.workspaceId)||projectOf(session.cwd);
- const agentRangesOf=(session:Session)=>intervals.filter(i=>!i.child&&sessionKey(i)===sessionKey(session)&&agentStates.has(i.state)).map(i=>[i.start,i.end] as Range);
+ const rangesByAgent=new Map<string,Range[]>();
+ for(const interval of intervals)if(!interval.child&&agentStates.has(interval.state)){
+  const key=sessionKey(interval),ranges=rangesByAgent.get(key)||[];ranges.push([interval.start,interval.end]);rangesByAgent.set(key,ranges);
+ }
+ const agentRangesOf=(session:Session)=>rangesByAgent.get(sessionKey(session))||[];
  let added:Range[]=[],agentDelta=0;
  for(const counter of counters){
   const span:Range=[counter.start,counter.end],project=projectOf(counter.workspaceId);
@@ -109,6 +113,7 @@ export function creditTaskCounters(summary:Summary,items:ReportedWorkItem[]):Sum
   if(!gaps.length)continue;
   for(const [start,end] of gaps)intervals.push({start,end,state:'running',proof:'inferred',sourceEventIds:[counter.id],hostId:session.hostId,workspaceId:session.workspaceId,sessionId:session.sessionId,agentId:session.agentId,provider:session.provider,runId:session.runId,taskId:session.taskId,dispatchId:session.dispatchId,child:false,agentIdentity:counter.agentIdentity,attributes:counter.attributes,metadataSource:'agent-report',projectPath:counter.projectPath,attributionSource:'task-counter',attributionReason:`Agent task counter “${counter.title}”`});
   const credit=Math.max(0,minuteCreditSeconds([...own,...gaps])-minuteCreditSeconds(own));
+  rangesByAgent.set(sessionKey(session),[...own,...gaps]);
   session.seconds+=credit;agentDelta+=credit;
   added=[...added,...gaps];
  }

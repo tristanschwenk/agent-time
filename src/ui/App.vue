@@ -426,7 +426,7 @@ onUnmounted(() => {
           <span v-if="store.status?.running && !store.status.storageCare?.paused && (store.status.workingAgents || 0) > 0">{{ store.status.workingAgents }} {{ store.status.workingAgents === 1 ? 'agent working' : 'agents working' }}</span>
           <div class="background-activities" role="status" aria-live="polite">
             <template v-for="activity in backgroundActivities" :key="activity.id">
-              <button class="capture-status-link" @click="activity.reveal?.(); activity.target === 'billing' ? navigate('billing') : store.openSettings('data'); if (activity.done) dismissBackgroundActivity(activity.id)">{{ activity.label }}<span v-if="activity.detail"> · {{ activity.detail }}</span></button>
+              <button class="capture-status-link" @click="activity.reveal?.(); activity.target === 'billing' ? navigate('billing') : activity.target === 'time' ? navigate('weekly') : store.openSettings('data'); if (activity.done) dismissBackgroundActivity(activity.id)">{{ activity.label }}<span v-if="activity.detail"> · {{ activity.detail }}</span></button>
               <button v-if="activity.done" class="capture-status-link" aria-label="Dismiss completed activity" @click="dismissBackgroundActivity(activity.id)"><X :size="12" /></button>
             </template>
             <button v-if="['queued','compressing'].includes(store.status?.storageCare?.pressure?.phase || '')" class="capture-status-link" @click="store.openSettings('data')">Compressing history…</button>

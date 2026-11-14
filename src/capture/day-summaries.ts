@@ -29,7 +29,15 @@ export class DaySummaries {
  private entries=new Map<string,DayWindow>();
  private seenRowid:number|undefined;
  private version=0;private budgetBytes:number;
- private trim(){while(this.entries.size>1&&(this.entries.size>maxCachedDays||[...this.entries.values()].reduce((n,entry)=>n+estimatedBytes(entry),0)>this.budgetBytes))this.entries.delete(this.entries.keys().next().value!);}
+ private sizes=new WeakMap<DayWindow,{version:number;bytes:number}>();
+ private retainedBytes(entry:DayWindow){
+  const cached=this.sizes.get(entry);if(cached?.version===entry.version)return cached.bytes;
+  const bytes=estimatedBytes(entry);this.sizes.set(entry,{version:entry.version,bytes});return bytes;
+ }
+ /** Range reports no longer need the completed day's large raw graph. */
+ has(date:string){return this.entries.has(date);}
+ release(date:string){this.entries.delete(date);}
+ private trim(){while(this.entries.size>1&&(this.entries.size>maxCachedDays||[...this.entries.values()].reduce((n,entry)=>n+this.retainedBytes(entry),0)>this.budgetBytes))this.entries.delete(this.entries.keys().next().value!);}
  private store:EventStore;private options:()=>SummaryOptions;
  /** Number of full window computations, for tests and diagnostics. */
  computations=0;

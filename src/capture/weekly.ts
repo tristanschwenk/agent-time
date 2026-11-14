@@ -13,18 +13,24 @@ export function weeklyReview(input:Summary|((date:string)=>Summary),startDate:st
 export function periodReview(input:Summary|((date:string)=>Summary),startDate:string,throughDate:string,acceptedDays:ReadonlySet<string>=new Set()):WeeklyReview{
  const steps=periodReviewSteps(input,startDate,throughDate,acceptedDays);let next=steps.next();while(!next.done)next=steps.next();return next.value;
 }
-/** Each yield releases a completed day; callers may let capture run before reading the next. */
-export function* periodReviewSteps(input:Summary|((date:string)=>Summary),startDate:string,throughDate:string,acceptedDays:ReadonlySet<string>=new Set()):Generator<void,WeeklyReview,unknown>{
+/** Calendar bounds shared by reduction and progress; preserve local-day/DST semantics. */
+export function periodReviewBounds(startDate:string,throughDate:string){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(startDate))throw new Error('Invalid week start');
  const start=new Date(`${startDate}T00:00:00`);
  if(Number.isNaN(start.getTime())||dateString(start)!==startDate)throw new Error('Invalid week start');
  const end=new Date(`${throughDate}T00:00:00`);
  if(Number.isNaN(end.getTime())||dateString(end)!==throughDate||throughDate<startDate||end.getTime()-start.getTime()>366*86400000)throw new Error('Invalid report period (maximum 367 days)');
  end.setDate(end.getDate()+1);
+ let totalDays=0;
+ for(let day=new Date(start);day<end;day.setDate(day.getDate()+1))totalDays++;
+ return {start,end,totalDays};
+}
+/** Each yield releases a completed day; callers may let capture run before reading the next. */
+export function* periodReviewSteps(input:Summary|((date:string)=>Summary),startDate:string,throughDate:string,acceptedDays:ReadonlySet<string>=new Set()):Generator<void,WeeklyReview,unknown>{
+ const {start,end}=periodReviewBounds(startDate,throughDate);
  const rows=new Map<string,WeeklyProject>(),reviewedEntries:ReviewedEntry[]=[],days:WeeklyReview['days']=[];
  const totals={humanSeconds:0,agentSeconds:0,agentWallSeconds:0,elapsedSeconds:0,reviewedSeconds:0};
- for(let day=new Date(start);day<end;day.setDate(day.getDate()+1)){
-  const summary=typeof input==='function'?input(dateString(day)):input;
+ const accumulateDay=(summary:Summary,day:Date)=>{
   const next=new Date(day);next.setDate(next.getDate()+1);
   const from=day.getTime()/1000,to=next.getTime()/1000;
   const byProject=new Map<string,Interval[]>(),accepted=acceptedDays.has(dateString(day));
@@ -48,6 +54,10 @@ export function* periodReviewSteps(input:Summary|((date:string)=>Summary),startD
   days.push({date:dateString(day),...dayTotals});
   totals.humanSeconds+=dayTotals.humanSeconds;totals.agentSeconds+=dayTotals.agentSeconds;totals.agentWallSeconds+=dayTotals.agentWallSeconds;totals.elapsedSeconds+=dayTotals.elapsedSeconds;
   totals.reviewedSeconds+=all.filter(interval=>interval.state==='human'&&(interval.userAttribution||accepted&&intervalProjectPath(interval))).reduce((sum,interval)=>sum+interval.end-interval.start,0);
+ };
+ for(let day=new Date(start);day<end;day.setDate(day.getDate()+1)){
+  accumulateDay(typeof input==='function'?input(dateString(day)):input,day);
+  // Keep no raw/day summary reference across the cooperative boundary.
   yield;
  }
  const projects=[...rows.values()].sort((a,b)=>b.elapsedSeconds-a.elapsedSeconds||a.project.localeCompare(b.project));

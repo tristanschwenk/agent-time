@@ -67,11 +67,14 @@ const windowQuery="SELECT rowid,payload FROM events WHERE observed_at>=? AND obs
 export function readWindowEvents(db:DatabaseSync,from:number,to:number,agentIdleThreshold:number):{events:CaptureEvent[];bounds:WindowBounds}{
  const bounds=windowBounds(from,to,agentIdleThreshold),parse=eventParser(),events:CaptureEvent[]=[];
  if(Number(db.prepare('PRAGMA user_version').get()?.user_version)===2){
-  // Filter/sort only metadata first. Decoding inside a timestamp-index scan or
-  // SQLite sorter would defeat the bounded cache on interleaved event clocks.
-  const rows=db.prepare('SELECT rowid FROM events WHERE observed_at>=? AND observed_at<? AND (observed_at>=? AND observed_at<? OR activity_sample=0) ORDER BY rowid');
-  const read=db.prepare("SELECT CASE WHEN typeof(payload_data)='text' THEN payload_data ELSE hex(payload_data) END stored,typeof(payload_data)='blob' packed FROM events WHERE rowid=?");
-  for(const row of rows.iterate(bounds.readFrom,bounds.readTo,bounds.activityFrom,bounds.activityTo)){const value=read.get(row.rowid!)!;events.push(parse(value.packed?readStoredPayload(db,value.stored):String(value.stored)));}
+  // Materialize only matching row IDs, then stream stored payloads in insertion
+  // order. Decode in JS after SQLite's metadata sort, never inside its sorter.
+  const rows=db.prepare(`SELECT payload_data FROM events WHERE rowid IN (
+   SELECT rowid FROM events WHERE observed_at>=? AND observed_at<? AND (observed_at>=? AND observed_at<? OR activity_sample=0)
+  ) ORDER BY rowid`);
+  for(const row of rows.iterate(bounds.readFrom,bounds.readTo,bounds.activityFrom,bounds.activityTo)){
+   events.push(parse(typeof row.payload_data==='string'?row.payload_data:readStoredPayload(db,row.payload_data)));
+  }
  }else for(const row of db.prepare(windowQuery).iterate(bounds.readFrom,bounds.readTo,bounds.activityFrom,bounds.activityTo))events.push(parse(String(row.payload)));
  return {events,bounds};
 }

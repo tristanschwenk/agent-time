@@ -48,7 +48,7 @@ test('period report protocol accepts a read-only scope and rejects unknown filte
  const calls:unknown[][]=[];const controller={status:()=>({}),summary:()=>({}),start:async()=>({}),stop:async()=>({}),periodReview:(...args:unknown[])=>{calls.push(args);return {days:[]};}};
  const params={fromDate:'2026-11-06',toDate:'2026-11-12',project:'/a',filters:{device:'local'}};
  assert.deepEqual(await dispatchRequest({id:'scope',method:'period_review',params},controller),{id:'scope',result:{days:[]}});
- assert.deepEqual(calls[0],['2026-11-06','2026-11-12','/a',{...emptyActivityFilters(),device:'local'}]);
+ assert.deepEqual(calls[0],['2026-11-06','2026-11-12','/a',{...emptyActivityFilters(),device:'local'},undefined]);
  for(const changed of [{filters:true},{filters:null},{filters:[]},{filters:{assignment:'bad'}},{filters:{sql:'anything'}},{project:17},{extra:true}])assert.ok('error'in await dispatchRequest({id:'bad',method:'period_review',params:{...params,...changed}},controller));assert.equal(calls.length,1);
 });
 

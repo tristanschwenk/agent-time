@@ -34,7 +34,8 @@ import {outdatedHookTargets} from './hook-warning.ts';
 import {diagnosticSummary} from './diagnostics.ts';
 import {sourceStates} from './source-state.ts';
 import {PrivacyExclusions,type PrivacyExclusion} from './privacy-exclusions.ts';
-import {weeklyReview,periodReviewSteps} from './weekly.ts';
+import {PeriodProgress} from './period-progress.ts';
+import {weeklyReview,periodReviewSteps,periodReviewBounds} from './weekly.ts';
 import {filterActivity,emptyActivityFilters,type ActivityFilters} from './activity-filter.ts';
 import {localWorkOutcomes} from './work-outcomes.ts';
 import {storageUsage} from './storage-usage.ts';
@@ -91,7 +92,9 @@ export class Collector {
   private summaryCache:{revision:string;at:number;value:Summary}|undefined;
   private days:DaySummaries;
   private reviewCache:{revision:string;decisions:HumanDecision[];splits:HumanSplit[]}|undefined;
-  private decorated=new Map<string,{key:string;value:Summary;day?:Summary}>();
+  private periodProgress=new PeriodProgress();
+  periodReviewProgress(id:string){return this.periodProgress.get(id);}
+  private decorated=new Map<string,{key:string;value:Summary;day?:Summary;bytes?:number}>();
   private usageReader:UsageReader;private hookInstallation:HookInstallation;private mcpInstallation:McpInstallation;private claudeStatusLine:ClaudeStatusLineInstallation;
   private hookStatusCache:{at:number;value:HookInstallationStatus}|undefined;
   private interval:number; private runId?:string; private reader:typeof callOrca;
@@ -653,7 +656,7 @@ export class Collector {
     if(cached?.key===key)return cached.value;
     const value=applyHumanDecisions(window.raw,review.decisions,review.splits);
     this.decorated.set(date,{key,value});
-    while(this.decorated.size>1&&(this.decorated.size>16||[...this.decorated.values()].reduce((n,entry)=>n+estimatedBytes(entry.value,8*1024*1024),0)>8*1024*1024))this.decorated.delete(this.decorated.keys().next().value!);
+    while(this.decorated.size>1&&(this.decorated.size>16||[...this.decorated.values()].reduce((n,entry)=>n+(entry.bytes??=estimatedBytes({value:entry.value,day:entry.day},8*1024*1024)),0)>8*1024*1024))this.decorated.delete(this.decorated.keys().next().value!);
     return value;
   }
   private reviewData(){
@@ -665,7 +668,9 @@ export class Collector {
   }
   private daySummary(date:string,maxAgeMs=0):Summary{
     const window=this.windowSummary(date,maxAgeMs),cached=this.decorated.get(date);
+    const hadDay=cached?.day;
     const day=cached?.value!==window?summaryForDate(window,date):cached.day||=summaryForDate(window,date);
+    if(cached&&!hadDay&&cached.day)cached.bytes=undefined;
     const resources=this.resources(),reports=this.surfaces.countTaskCounters?this.reportedWork(date):[],counters=JSON.stringify(reports);
     // Same inputs return the same object, so its version token stays stable.
     const memo=this.derivedMemo;
@@ -745,7 +750,10 @@ export class Collector {
     last.setDate(last.getDate()+1);
     const start=first.getTime()/1000,end=last.getTime()/1000;
     const now=Date.now()/1000;
-    return reportedWorkForDay(this.store.taskReportEvidence(start-86400,end+43200),start,end,now,this.store.sessionEnds(start-86400,Math.max(end,now)+60));
+    const events=this.store.taskReportEvidence(start-86400,end+43200);
+    // Session endings only close counters; context-only/empty days need no scan.
+    const ends=events.some(event=>event.kind==='task_start')?this.store.sessionEnds(start-86400,Math.max(end,now)+60):new Map<string,number>();
+    return reportedWorkForDay(events,start,end,now,ends);
   }
   /**
    * Stop an agent-reported timer from the app, for timers an agent left open.
@@ -771,17 +779,40 @@ export class Collector {
       return day;
     },startDate,accepted);
   }
-  async periodReview(from:string,to:string,project='all',filters:ActivityFilters=emptyActivityFilters()){
+  async periodReview(from:string,to:string,project='all',filters:ActivityFilters=emptyActivityFilters(),progressId?:string){
+    const {totalDays}=periodReviewBounds(from,to);
+    let completedDays=0;
+    if(progressId)this.periodProgress.begin(progressId,totalDays,from);
     const accepted=new Set<string>(),apps=new Set<string>(),sites=new Set<string>(),devices=new Set<string>();
+    let releaseDate:string|undefined;
+    const releaseDay=()=>{if(releaseDate){this.days.release(releaseDate);this.decorated.delete(releaseDate);this.derivedMemo=undefined;releaseDate=undefined;}};
     const steps=periodReviewSteps(date=>{
-      const day=this.daySummary(date,15000),snapshot=this.dayReviewSnapshot(date);
-      if(snapshot.completedAt&&!snapshot.stale&&!snapshot.pendingGroups)accepted.add(date);
+      if(progressId)this.periodProgress.set(progressId,{phase:'reading',completedDays,totalDays,date});
+      releaseDate=this.days.has(date)?undefined:date;
+      const day=this.daySummary(date,15000);
+      // Unmarked days cannot be accepted; avoid building their groups and fingerprints.
+      if(this.store.dayReview(date)){
+        const snapshot=this.dayReviewSnapshot(date);
+        if(snapshot.completedAt&&!snapshot.stale&&!snapshot.pendingGroups)accepted.add(date);
+      }
       for(const i of day.intervals){const app=i.foregroundName||i.browserBundleId||i.foregroundBundleId;if(app)apps.add(app);if(i.browserDomain)sites.add(i.browserDomain);devices.add(i.hostId||'local');}
       return {...day,intervals:filterActivity(day,filters,project)};
     },from,to,accepted);
-    let next=steps.next();
-    while(!next.done){await new Promise<void>(resolve=>setImmediate(resolve));next=steps.next();}
-    return {...next.value,options:{app:[...apps].sort(),site:[...sites].sort(),device:[...devices].sort()}};
+    try{
+      // Let the initial 0/N state reach the UI before reading the first day.
+      await new Promise<void>(resolve=>setImmediate(resolve));
+      let next=steps.next();
+      while(!next.done){
+        completedDays++;releaseDay();
+        if(progressId)this.periodProgress.set(progressId,{phase:'reading',completedDays,totalDays,...(completedDays<totalDays?{date:addDays(from,completedDays)}:{})});
+        await new Promise<void>(resolve=>setImmediate(resolve));
+        next=steps.next();
+      }
+      const result={...next.value,options:{app:[...apps].sort(),site:[...sites].sort(),device:[...devices].sort()}};
+      if(progressId)this.periodProgress.set(progressId,{phase:'complete',completedDays,totalDays});
+      return result;
+    }catch(error){if(progressId)this.periodProgress.set(progressId,{phase:'failed',completedDays,totalDays});throw error;
+    }finally{releaseDay();steps.return(undefined as never);}
   }
   workOutcomes(date:string){localDayBounds(date);return localWorkOutcomes(this.windowSummary(date,15000),date);}
   manualNotes(date:string){return this.store.manualNotes(date);}

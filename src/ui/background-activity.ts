@@ -1,6 +1,6 @@
 import { shallowRef } from 'vue';
 
-export type ActivityTarget = 'billing' | 'data' | 'storage';
+export type ActivityTarget = 'billing' | 'data' | 'storage' | 'time';
 export interface BackgroundActivity {
   id: number;
   label: string;

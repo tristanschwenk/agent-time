@@ -75,7 +75,7 @@ test('discarded hidden-page requests retry on return instead of leaving a perman
   const store=reactive({page:kind==='WorkOutcomes'?'outcomes':'weekly',selectedDate:'2026-11-10',project:'all',timelineProjects:[],reviewRevision:0,period:{from:'2026-11-10',to:'2026-11-10'},pageFilters:{time:{search:'',app:'',site:'',device:'',assignment:'all'},evidence:{search:''}}});
   const pending:Array<(value:unknown)=>void>=[],activated:Array<()=>void>=[];
   const read=()=>new Promise(resolve=>pending.push(resolve));
-  const bindings={defineProps:()=>({}),usePagePresentation:()=>ref(true),computed:requireVue.computed,reactive,ref,watch:requireVue.watch,onMounted:()=>{},onUnmounted:()=>{},onActivated:(fn:()=>void)=>activated.push(fn),useStore:()=>store,workOutcomeTransport:{list:read},weeklyTransport:{review:read,period:read},windowVisible:ref(true),humanizeError:String,clock:String};
+  const bindings={defineProps:()=>({}),usePagePresentation:()=>ref(true),computed:requireVue.computed,reactive,ref,watch:requireVue.watch,onMounted:()=>{},onUnmounted:()=>{},onActivated:(fn:()=>void)=>activated.push(fn),useStore:()=>store,workOutcomeTransport:{list:read},crypto, startBackgroundActivity:()=>({update:()=>{},finish:()=>{}}),weeklyTransport:{review:read,period:read,progress:async()=>null},windowVisible:ref(true),humanizeError:String,clock:String};
   const state=new Function(...Object.keys(bindings),code+';return {loading,error,load};')(...Object.values(bindings));
   assert.equal(pending.length,1);const page=store.page;store.page='settings';store.selectedDate='2026-11-17';store.period={from:'2026-11-17',to:'2026-11-17'};await nextTick();
   pending[0]!({projects:[],days:[]});await new Promise(resolve=>setTimeout(resolve,0));assert.equal(state.loading.value,false);
@@ -158,4 +158,24 @@ test('a first visit to a report section starts at zero while cached sections ret
  store.reportsSection.value='usage';await flushPresentation();assert.equal(element.scrollTop,0);assert.equal(element.scrollLeft,0);
  element.scrollTop=100;store.reportsSection.value='time';await flushPresentation();assert.equal(element.scrollTop,400);assert.equal(element.scrollLeft,20);
  store.reportsSection.value='usage';await flushPresentation();assert.equal(element.scrollTop,100);assert.equal(element.scrollLeft,0);
+});
+
+test('Time report progress survives navigation and stale polls cannot replace a newer scope',async()=>{
+ const store=reactive({page:'weekly',reportsSection:'time',period:{from:'2026-10-14',to:'2026-11-12'},project:'all',pageFilters:{time:{search:'',app:'',site:'',device:'',assignment:'all'}},reviewRevision:0});
+ const reads:Array<(value:unknown)=>void>=[],polls:Array<(value:unknown)=>void>=[],timers=new Map<number,()=>void>(),activities:Array<{details:string[];finished:unknown[]}>=[];let sequence=0;
+ const state=actualPageScript('WeeklyReview',{
+  crypto,onUnmounted:()=>{},useStore:()=>store,windowVisible:ref(true),humanizeError:String,duration:String,shortDate:String,
+  setTimeout:(fn:()=>void)=>{const id=++sequence;timers.set(id,fn);return id;},clearTimeout:(id:number)=>timers.delete(id),
+  weeklyTransport:{period:()=>new Promise(resolve=>reads.push(resolve)),progress:()=>new Promise(resolve=>polls.push(resolve))},
+  startBackgroundActivity:()=>{const item={details:[]as string[],finished:[]as unknown[]};activities.push(item);return {update:(detail:string)=>item.details.push(detail),finish:(label?:string)=>item.finished.push(label)};},
+ },'progress,progressDetail,loading,review,load,error');
+ assert.equal(reads.length,1);polls[0]!({phase:'reading',completedDays:4,totalDays:30,date:'2026-10-18'});await flushPresentation();assert.equal(state.progress.value.completedDays,4);
+ store.page='settings';await flushPresentation();const tick=[...timers.values()][0]!;timers.clear();tick();assert.equal(polls.length,2);
+ polls[1]!({phase:'reading',completedDays:9,totalDays:30,date:'2026-10-23'});await flushPresentation();assert.equal(state.progress.value.completedDays,9);assert.match(activities[0]!.details.at(-1)!,/9 \/ 30/);
+ const nextTickPoll=[...timers.values()][0]!;timers.clear();nextTickPoll();assert.equal(polls.length,3);
+ store.period={from:'2026-11-12',to:'2026-11-12'};store.page='weekly';const newer=state.load();assert.equal(reads.length,2);
+ polls[2]!({phase:'complete',completedDays:30,totalDays:30});await flushPresentation();assert.equal(state.progress.value,null);
+ polls[3]!({phase:'reading',completedDays:0,totalDays:1,date:'2026-11-12'});await flushPresentation();assert.equal(state.progress.value.totalDays,1);
+ reads[0]!({days:[],projects:[],totals:{humanSeconds:1}});await flushPresentation();assert.equal(state.loading.value,true);assert.equal(state.review.value,null);assert.equal(activities[0]!.finished.at(-1),undefined);
+ reads[1]!({days:[],projects:[],totals:{humanSeconds:2}});await newer;assert.equal(state.loading.value,false);assert.equal(state.review.value.totals.humanSeconds,2);assert.deepEqual(activities[1]!.finished,['Time report ready']);assert.equal(timers.size,0);
 });

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { startBackgroundActivity } from './background-activity.ts';
+import type { PeriodReportProgress } from '../capture/period-progress.ts';
 import ReportScope from './ReportScope.vue';
 import LoadingStatus from './LoadingStatus.vue';
 import { computed, onMounted, onUnmounted, onActivated, reactive, ref, watch } from 'vue';
@@ -9,6 +11,9 @@ import { duration, shortDate } from './format.ts';
 import { humanizeError } from './errors.ts';
 import { windowVisible } from './polling.ts';
 
+const progress=ref<PeriodReportProgress|null>(null);
+let stopProgress=()=>{};
+const progressDetail=computed(()=>progress.value?`${progress.value.completedDays} / ${progress.value.totalDays} days completed${progress.value.date?` · Reading ${progress.value.date}`:''}. You can use other sections while this runs.`:'Waiting for the report to start. You can use other sections while this runs.');
 const store = reactive(useStore());
 const review = ref<WeeklyReview | null>(null),
   error = ref(''),
@@ -42,7 +47,7 @@ onMounted(() => {
     if (windowVisible.value && (store.page === 'weekly' || store.page === 'reports' && store.reportsSection === 'time') && !loading.value) void load();
   }, 60_000);
 });
-onUnmounted(() => {clearInterval(refreshTimer);clearTimeout(filterTimer);});
+onUnmounted(() => {++loadGeneration;stopProgress();clearInterval(refreshTimer);clearTimeout(filterTimer);});
 function setGoal(path: string, event: Event) {
   const hours = Number((event.target as HTMLInputElement).value);
   if (!Number.isFinite(hours) || hours < 0 || hours > 168) return;
@@ -83,20 +88,35 @@ async function load() {
   const generation = ++loadGeneration,
     startDate = currentContext(),
     revision = store.reviewRevision;
+  stopProgress();
+  const progressId=crypto.randomUUID(),activity=startBackgroundActivity('Preparing time report','time');
+  let stopped=false,timer:ReturnType<typeof setTimeout>|undefined;
+  const stop=()=>{stopped=true;clearTimeout(timer);};
+  stopProgress=stop;
+  progress.value=null;
+  const poll=async()=>{
+    try{const value=await weeklyTransport.progress(progressId);if(!stopped&&generation===loadGeneration&&value){progress.value=value;activity.update(`${value.completedDays} / ${value.totalDays} days${value.date?` · ${value.date}`:''}`);}}catch{/* A progress poll must not interrupt the report itself. */}
+    if(!stopped)timer=setTimeout(()=>void poll(),500);
+  };
   requestedContext = currentContext();
   loading.value = true;
   error.value = '';
   try {
-    const next = await weeklyTransport.period(store.period.from,store.period.to,store.project,{...store.pageFilters.time});
+    const pending=weeklyTransport.period(store.period.from,store.period.to,store.project,{...store.pageFilters.time},progressId);
+    void poll();
+    const next=await pending;
     if (generation === loadGeneration && startDate === currentContext() && revision === store.reviewRevision) {
       review.value = next;
       if(next.options)store.reportFilterOptions=next.options;
       committedContext = startDate;
       refreshedAt.value = Date.now();
+      activity.finish('Time report ready');
     }
   } catch (cause) {
     if (generation === loadGeneration) error.value = humanizeError(cause);
   } finally {
+    stop();
+    if(generation!==loadGeneration||startDate!==currentContext()||error.value)activity.finish();
     if (generation === loadGeneration) loading.value = false;
   }
 }
@@ -127,7 +147,7 @@ function exportReviewed() {
         Your time, agent time and elapsed time are measured separately. When agents work in parallel, agent
         time can be more than the time that passed. These are measured activity totals; use the Billing tab for billable time, rounding and amounts.
       </p>
-      <LoadingStatus v-if="loading" label="Loading selected period" detail="Reading activity for each day. Large archives can take longer; you can use other sections while this runs." />
+      <LoadingStatus v-if="loading" label="Loading selected period" :detail="progressDetail" :completed="progress?.completedDays" :total="progress?.totalDays" />
       <p v-if="error" class="weekly-error" role="alert">{{ error }}</p>
       <template v-if="review && committedContext===currentContext()"
         ><ReportScope :from="review.startDate" :through="review.endDate" :source="store.project==='all'?'All projects':store.project==='unassigned'?'Unassigned activity':`Repository · ${store.project}`" mode="live" detail="Measured activity with the current page filters. Open a day in Review for individual visits. These are not billable totals." />
