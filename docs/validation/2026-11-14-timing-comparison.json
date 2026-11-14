@@ -1,0 +1,1665 @@
+{
+  "agent": {
+    "bytes": 717008896,
+    "userVersion": {
+      "user_version": 2
+    },
+    "sources": [
+      {
+        "source": "agent_report",
+        "activity_sample": 0,
+        "n": 964,
+        "first": 1793447625.467,
+        "last": 1794601884.615,
+        "logicalBytes": 483393
+      },
+      {
+        "source": "capture",
+        "activity_sample": 0,
+        "n": 429,
+        "first": 1791834654.791,
+        "last": 1794650864.687,
+        "logicalBytes": 93780
+      },
+      {
+        "source": "hook",
+        "activity_sample": 0,
+        "n": 385484,
+        "first": 1791835033.417,
+        "last": 1794687823.792,
+        "logicalBytes": 262150099
+      },
+      {
+        "source": "macos",
+        "activity_sample": 0,
+        "n": 143,
+        "first": 1791908271.968,
+        "last": 1794650748.797,
+        "logicalBytes": 63800
+      },
+      {
+        "source": "macos",
+        "activity_sample": 1,
+        "n": 740383,
+        "first": 1791834654.838,
+        "last": 1794687825.235,
+        "logicalBytes": 364152469
+      },
+      {
+        "source": "orca",
+        "activity_sample": 0,
+        "n": 450232,
+        "first": 1791836194.216,
+        "last": 1794683029.578,
+        "logicalBytes": 229393939
+      }
+    ],
+    "stored": [
+      {
+        "format": "blob",
+        "n": 1451396,
+        "bytes": 52250256,
+        "logicalBytes": 784765288
+      },
+      {
+        "format": "text",
+        "n": 126239,
+        "bytes": 71556775,
+        "logicalBytes": 71572192
+      }
+    ],
+    "blocks": {
+      "n": 710,
+      "originalBytes": 784765288,
+      "compressedBytes": 79637858,
+      "events": 1451396
+    },
+    "tables": [
+      {
+        "name": "at_event_blocks",
+        "count": 710
+      },
+      {
+        "name": "at_pack_state",
+        "count": 1
+      },
+      {
+        "name": "at_tool_keys",
+        "count": 343238
+      },
+      {
+        "name": "billing_policies",
+        "count": 4
+      },
+      {
+        "name": "billing_projects",
+        "count": 1
+      },
+      {
+        "name": "billing_reports",
+        "count": 7
+      },
+      {
+        "name": "day_review_cache",
+        "count": 16
+      },
+      {
+        "name": "day_reviews",
+        "count": 0
+      },
+      {
+        "name": "events",
+        "count": 1577635
+      },
+      {
+        "name": "human_decisions",
+        "count": 1874
+      },
+      {
+        "name": "human_splits",
+        "count": 0
+      },
+      {
+        "name": "manual_notes",
+        "count": 0
+      },
+      {
+        "name": "observation_signatures",
+        "count": 1603
+      },
+      {
+        "name": "pricing_catalogs",
+        "count": 1
+      },
+      {
+        "name": "pricing_state",
+        "count": 3
+      },
+      {
+        "name": "review_actions",
+        "count": 5
+      },
+      {
+        "name": "usage_captured_sessions",
+        "count": 1687
+      },
+      {
+        "name": "usage_captured_state",
+        "count": 1
+      },
+      {
+        "name": "usage_cursors",
+        "count": 3815
+      },
+      {
+        "name": "usage_events",
+        "count": 170359
+      },
+      {
+        "name": "usage_pricing",
+        "count": 170359
+      }
+    ],
+    "storage": [
+      {
+        "name": "events",
+        "bytes": 326684672,
+        "cells": 1657175
+      },
+      {
+        "name": "at_event_blocks",
+        "bytes": 80965632,
+        "cells": 710
+      },
+      {
+        "name": "usage_events",
+        "bytes": 80736256,
+        "cells": 190019
+      },
+      {
+        "name": "sqlite_autoindex_events_1",
+        "bytes": 79683584,
+        "cells": 1577635
+      },
+      {
+        "name": "events_observed_at",
+        "bytes": 27656192,
+        "cells": 1577635
+      },
+      {
+        "name": "events_source_recent",
+        "bytes": 21618688,
+        "cells": 1577635
+      },
+      {
+        "name": "at_tool_keys",
+        "bytes": 17788928,
+        "cells": 347568
+      },
+      {
+        "name": "usage_pricing",
+        "bytes": 16240640,
+        "cells": 174312
+      },
+      {
+        "name": "at_tool_identity",
+        "bytes": 15912960,
+        "cells": 343238
+      },
+      {
+        "name": "sqlite_autoindex_usage_pricing_1",
+        "bytes": 14311424,
+        "cells": 170359
+      },
+      {
+        "name": "sqlite_autoindex_usage_events_1",
+        "bytes": 14311424,
+        "cells": 170359
+      },
+      {
+        "name": "events_hooks",
+        "bytes": 6778880,
+        "cells": 385484
+      },
+      {
+        "name": "events_hook_provider",
+        "bytes": 5799936,
+        "cells": 385484
+      },
+      {
+        "name": "at_events_hot",
+        "bytes": 1740800,
+        "cells": 126239
+      },
+      {
+        "name": "events_terminal_handle",
+        "bytes": 1507328,
+        "cells": 27654
+      },
+      {
+        "name": "observation_signatures",
+        "bytes": 987136,
+        "cells": 1842
+      },
+      {
+        "name": "usage_cursors",
+        "bytes": 724992,
+        "cells": 3990
+      },
+      {
+        "name": "sqlite_autoindex_usage_cursors_1",
+        "bytes": 651264,
+        "cells": 3815
+      },
+      {
+        "name": "events_coverage_at",
+        "bytes": 491520,
+        "cells": 28233
+      },
+      {
+        "name": "review_actions",
+        "bytes": 434176,
+        "cells": 8
+      },
+      {
+        "name": "human_decisions",
+        "bytes": 266240,
+        "cells": 1937
+      },
+      {
+        "name": "sqlite_autoindex_observation_signatures_1",
+        "bytes": 188416,
+        "cells": 1603
+      },
+      {
+        "name": "sqlite_autoindex_human_decisions_1",
+        "bytes": 176128,
+        "cells": 1874
+      },
+      {
+        "name": "usage_captured_sessions",
+        "bytes": 110592,
+        "cells": 1712
+      },
+      {
+        "name": "sqlite_autoindex_usage_captured_sessions_1",
+        "bytes": 106496,
+        "cells": 1687
+      },
+      {
+        "name": "billing_reports",
+        "bytes": 86016,
+        "cells": 11
+      },
+      {
+        "name": "events_session_ends_at",
+        "bytes": 32768,
+        "cells": 1592
+      },
+      {
+        "name": "events_reports_at",
+        "bytes": 24576,
+        "cells": 964
+      },
+      {
+        "name": "sqlite_schema",
+        "bytes": 12288,
+        "cells": 52
+      },
+      {
+        "name": "day_review_cache",
+        "bytes": 12288,
+        "cells": 17
+      },
+      {
+        "name": "usage_captured_state",
+        "bytes": 4096,
+        "cells": 1
+      },
+      {
+        "name": "sqlite_autoindex_review_actions_1",
+        "bytes": 4096,
+        "cells": 5
+      },
+      {
+        "name": "sqlite_autoindex_pricing_state_1",
+        "bytes": 4096,
+        "cells": 3
+      },
+      {
+        "name": "sqlite_autoindex_pricing_catalogs_1",
+        "bytes": 4096,
+        "cells": 1
+      },
+      {
+        "name": "sqlite_autoindex_manual_notes_1",
+        "bytes": 4096,
+        "cells": 0
+      },
+      {
+        "name": "sqlite_autoindex_human_splits_1",
+        "bytes": 4096,
+        "cells": 0
+      },
+      {
+        "name": "sqlite_autoindex_day_reviews_1",
+        "bytes": 4096,
+        "cells": 0
+      },
+      {
+        "name": "sqlite_autoindex_day_review_cache_1",
+        "bytes": 4096,
+        "cells": 16
+      },
+      {
+        "name": "sqlite_autoindex_billing_reports_1",
+        "bytes": 4096,
+        "cells": 7
+      },
+      {
+        "name": "sqlite_autoindex_billing_projects_1",
+        "bytes": 4096,
+        "cells": 1
+      },
+      {
+        "name": "sqlite_autoindex_billing_policies_1",
+        "bytes": 4096,
+        "cells": 4
+      },
+      {
+        "name": "review_actions_at",
+        "bytes": 4096,
+        "cells": 5
+      },
+      {
+        "name": "pricing_state",
+        "bytes": 4096,
+        "cells": 3
+      },
+      {
+        "name": "pricing_catalogs",
+        "bytes": 4096,
+        "cells": 1
+      },
+      {
+        "name": "manual_notes_start",
+        "bytes": 4096,
+        "cells": 0
+      },
+      {
+        "name": "manual_notes",
+        "bytes": 4096,
+        "cells": 0
+      },
+      {
+        "name": "human_splits",
+        "bytes": 4096,
+        "cells": 0
+      },
+      {
+        "name": "events_resources_at",
+        "bytes": 4096,
+        "cells": 20
+      },
+      {
+        "name": "day_reviews",
+        "bytes": 4096,
+        "cells": 0
+      },
+      {
+        "name": "billing_projects",
+        "bytes": 4096,
+        "cells": 1
+      },
+      {
+        "name": "billing_policies",
+        "bytes": 4096,
+        "cells": 4
+      },
+      {
+        "name": "at_pack_state",
+        "bytes": 4096,
+        "cells": 1
+      }
+    ],
+    "days": [
+      {
+        "date": "2026-11-07",
+        "rows": [
+          {
+            "source": "agent_report",
+            "activity_sample": 0,
+            "n": 475,
+            "logicalBytes": 224261
+          },
+          {
+            "source": "capture",
+            "activity_sample": 0,
+            "n": 36,
+            "logicalBytes": 7341
+          },
+          {
+            "source": "hook",
+            "activity_sample": 0,
+            "n": 20181,
+            "logicalBytes": 14112711
+          },
+          {
+            "source": "macos",
+            "activity_sample": 0,
+            "n": 4,
+            "logicalBytes": 1624
+          },
+          {
+            "source": "macos",
+            "activity_sample": 1,
+            "n": 41228,
+            "logicalBytes": 19627575
+          },
+          {
+            "source": "orca",
+            "activity_sample": 0,
+            "n": 16364,
+            "logicalBytes": 5542969
+          }
+        ]
+      },
+      {
+        "date": "2026-11-12",
+        "rows": [
+          {
+            "source": "capture",
+            "activity_sample": 0,
+            "n": 28,
+            "logicalBytes": 6329
+          },
+          {
+            "source": "hook",
+            "activity_sample": 0,
+            "n": 22668,
+            "logicalBytes": 15316636
+          },
+          {
+            "source": "macos",
+            "activity_sample": 0,
+            "n": 4,
+            "logicalBytes": 2105
+          },
+          {
+            "source": "macos",
+            "activity_sample": 1,
+            "n": 40822,
+            "logicalBytes": 21105632
+          },
+          {
+            "source": "orca",
+            "activity_sample": 0,
+            "n": 105,
+            "logicalBytes": 54982
+          }
+        ]
+      },
+      {
+        "date": "2026-11-13",
+        "rows": [
+          {
+            "source": "agent_report",
+            "activity_sample": 0,
+            "n": 2,
+            "logicalBytes": 1323
+          },
+          {
+            "source": "capture",
+            "activity_sample": 0,
+            "n": 9,
+            "logicalBytes": 1823
+          },
+          {
+            "source": "hook",
+            "activity_sample": 0,
+            "n": 13336,
+            "logicalBytes": 9245186
+          },
+          {
+            "source": "macos",
+            "activity_sample": 0,
+            "n": 4,
+            "logicalBytes": 1734
+          },
+          {
+            "source": "macos",
+            "activity_sample": 1,
+            "n": 43923,
+            "logicalBytes": 23591501
+          },
+          {
+            "source": "orca",
+            "activity_sample": 0,
+            "n": 53,
+            "logicalBytes": 29098
+          }
+        ]
+      }
+    ]
+  },
+  "timing": {
+    "tables": {
+      "schema_migrations": 19,
+      "Application": 340,
+      "Path": 150265,
+      "Title": 98246,
+      "Device": 1,
+      "AppActivity": 864778,
+      "TaskActivity": 1033,
+      "Project": 24,
+      "Filter": 11,
+      "Integration": 0,
+      "IntegrationProject": 0,
+      "EventSource": 0,
+      "Event": 0,
+      "integration_log_result": 0,
+      "EventSourceTaskActivity": 0,
+      "SyncedPreference": 1
+    },
+    "range": [
+      1732697821.9646487,
+      1794687739.133311,
+      12.97975411636299,
+      0,
+      0
+    ],
+    "storage": [
+      [
+        "AppActivity",
+        41041920,
+        874754
+      ],
+      [
+        "sqlite_autoindex_Path_1",
+        37961728,
+        150265
+      ],
+      [
+        "index_appactivity_on_projectid_isdeleted_startdate_enddate",
+        32501760,
+        864778
+      ],
+      [
+        "Path",
+        25632768,
+        156505
+      ],
+      [
+        "index_appactivity_on_startdate",
+        19398656,
+        864778
+      ],
+      [
+        "sqlite_autoindex_Title_1",
+        8134656,
+        98246
+      ],
+      [
+        "Title",
+        6598656,
+        99851
+      ],
+      [
+        "TaskActivity",
+        110592,
+        1058
+      ],
+      [
+        "index_application_on_bundleidentifier_executable_title",
+        49152,
+        340
+      ],
+      [
+        "Application",
+        49152,
+        350
+      ],
+      [
+        "index_taskactivity_on_projectid_startdate",
+        36864,
+        1033
+      ],
+      [
+        "index_taskactivity_on_startdate",
+        24576,
+        1033
+      ],
+      [
+        "index_taskactivity_on_isrunning",
+        20480,
+        1033
+      ],
+      [
+        "sqlite_schema",
+        16384,
+        52
+      ],
+      [
+        "Project",
+        12288,
+        25
+      ],
+      [
+        "sqlite_autoindex_schema_migrations_1",
+        4096,
+        19
+      ],
+      [
+        "sqlite_autoindex_Device_1",
+        4096,
+        1
+      ],
+      [
+        "schema_migrations",
+        4096,
+        19
+      ],
+      [
+        "integration_log_result",
+        4096,
+        0
+      ],
+      [
+        "index_syncedpreference_on_key",
+        4096,
+        1
+      ],
+      [
+        "index_project_on_parentid_listposition",
+        4096,
+        24
+      ],
+      [
+        "index_integration_project_on_title",
+        4096,
+        0
+      ],
+      [
+        "index_integration_project_on_timing_project_id",
+        4096,
+        0
+      ],
+      [
+        "index_integration_project_on_origin_id",
+        4096,
+        0
+      ],
+      [
+        "index_integration_project_on_integration_id",
+        4096,
+        0
+      ],
+      [
+        "index_integration_on_type",
+        4096,
+        0
+      ],
+      [
+        "index_filter_on_parentid_listposition",
+        4096,
+        11
+      ],
+      [
+        "index_event_source_task_activity_on_task_activity_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_task_activity_on_integration_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_task_activity_on_event_source_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_task_activity_on_event_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_on_title",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_on_template_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_on_origin_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_on_integration_project_id_last_modified_origin",
+        4096,
+        0
+      ],
+      [
+        "index_event_source_on_integration_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_on_start_date",
+        4096,
+        0
+      ],
+      [
+        "index_event_on_origin_id",
+        4096,
+        0
+      ],
+      [
+        "index_event_on_integration_id_start_date_deleted_at",
+        4096,
+        0
+      ],
+      [
+        "index_event_on_event_source_id_event_action",
+        4096,
+        0
+      ],
+      [
+        "index_event_on_end_date",
+        4096,
+        0
+      ],
+      [
+        "index_Project_on_membershipID_parentID_listPosition",
+        4096,
+        24
+      ],
+      [
+        "SyncedPreference",
+        4096,
+        1
+      ],
+      [
+        "IntegrationProject",
+        4096,
+        0
+      ],
+      [
+        "Integration",
+        4096,
+        0
+      ],
+      [
+        "Filter",
+        4096,
+        11
+      ],
+      [
+        "EventSourceTaskActivity",
+        4096,
+        0
+      ],
+      [
+        "EventSource",
+        4096,
+        0
+      ],
+      [
+        "Event",
+        4096,
+        0
+      ],
+      [
+        "Device",
+        4096,
+        1
+      ]
+    ],
+    "intervals": [
+      120926,
+      715698,
+      30925,
+      404769,
+      3235
+    ],
+    "days": [
+      {
+        "date": "2026-11-07",
+        "visits": 1658,
+        "carryIn": 1,
+        "assigned": 75,
+        "minDuration": 0.9517583847045898,
+        "maxDuration": 1003.9764354228973,
+        "avgDuration": 20.1297648535419,
+        "groups": 36,
+        "jsonBytes": 1406,
+        "queryMs": [
+          645.8626250096131,
+          203.55208398541436,
+          197.17850000597537,
+          192.10020898026414,
+          210.03187500173226
+        ],
+        "medianMs": 203.55208398541436,
+        "plan": [
+          [
+            7,
+            0,
+            203,
+            "SEARCH AppActivity USING INDEX index_appactivity_on_startdate (startDate<?)"
+          ],
+          [
+            19,
+            0,
+            0,
+            "USE TEMP B-TREE FOR GROUP BY"
+          ]
+        ]
+      },
+      {
+        "date": "2026-11-12",
+        "visits": 1997,
+        "carryIn": 1,
+        "assigned": 799,
+        "minDuration": 0.9293088912963867,
+        "maxDuration": 1633.8379669189453,
+        "avgDuration": 23.43128136007799,
+        "groups": 52,
+        "jsonBytes": 2158,
+        "queryMs": [
+          230.4346250020899,
+          199.32716598850675,
+          201.58333299332298,
+          203.4776249784045,
+          216.29354200558737
+        ],
+        "medianMs": 203.4776249784045,
+        "plan": [
+          [
+            7,
+            0,
+            203,
+            "SEARCH AppActivity USING INDEX index_appactivity_on_startdate (startDate<?)"
+          ],
+          [
+            19,
+            0,
+            0,
+            "USE TEMP B-TREE FOR GROUP BY"
+          ]
+        ]
+      },
+      {
+        "date": "2026-11-13",
+        "visits": 1592,
+        "carryIn": 0,
+        "assigned": 351,
+        "minDuration": 0.9531221389770508,
+        "maxDuration": 1155.0163397789001,
+        "avgDuration": 30.48447895903683,
+        "groups": 29,
+        "jsonBytes": 1134,
+        "queryMs": [
+          203.65754200611264,
+          202.8258329955861,
+          194.8234999726992,
+          192.12787499418482,
+          193.00454200129025
+        ],
+        "medianMs": 194.8234999726992,
+        "plan": [
+          [
+            7,
+            0,
+            203,
+            "SEARCH AppActivity USING INDEX index_appactivity_on_startdate (startDate<?)"
+          ],
+          [
+            19,
+            0,
+            0,
+            "USE TEMP B-TREE FOR GROUP BY"
+          ]
+        ]
+      }
+    ],
+    "maxDuration": 17043.906004428864,
+    "coveringIndex": [
+      [
+        "index_appactivity_on_projectid_isdeleted_startdate_enddate",
+        "AppActivity",
+        "CREATE INDEX \"index_appactivity_on_projectid_isdeleted_startdate_enddate\"\n\tON \"AppActivity\" (\"projectID\", \"isDeleted\", \"startDate\", \"endDate\")"
+      ]
+    ],
+    "bytes": 171945984,
+    "syncBytes": 128036864,
+    "syncLog": [
+      57296,
+      148691181,
+      65514111,
+      1734952027.2308512,
+      1794687803.769171,
+      867121
+    ],
+    "boundedQueries": [
+      {
+        "date": "2026-11-07",
+        "ms": [
+          1.3661660195793957,
+          1.1205420014448464,
+          1.0895000013988465,
+          1.1047499720007181,
+          1.0882909991778433
+        ],
+        "medianMs": 1.1047499720007181,
+        "groups": 36,
+        "jsonBytes": 1406,
+        "lookbackSeconds": 86400,
+        "validForObservedMaxDurationSeconds": 17043.906004428864,
+        "plan": [
+          [
+            7,
+            0,
+            163,
+            "SEARCH AppActivity USING INDEX index_appactivity_on_startdate (startDate>? AND startDate<?)"
+          ],
+          [
+            22,
+            0,
+            0,
+            "USE TEMP B-TREE FOR GROUP BY"
+          ]
+        ]
+      },
+      {
+        "date": "2026-11-12",
+        "ms": [
+          1.5075829869601876,
+          1.3771670055575669,
+          1.428207993740216,
+          1.4357079926412553,
+          1.3680839911103249
+        ],
+        "medianMs": 1.428207993740216,
+        "groups": 52,
+        "jsonBytes": 2158,
+        "lookbackSeconds": 86400,
+        "validForObservedMaxDurationSeconds": 17043.906004428864,
+        "plan": [
+          [
+            7,
+            0,
+            163,
+            "SEARCH AppActivity USING INDEX index_appactivity_on_startdate (startDate>? AND startDate<?)"
+          ],
+          [
+            22,
+            0,
+            0,
+            "USE TEMP B-TREE FOR GROUP BY"
+          ]
+        ]
+      },
+      {
+        "date": "2026-11-13",
+        "ms": [
+          1.1499169922899455,
+          1.1342919897288084,
+          1.109750010073185,
+          1.1269999959040433,
+          1.5562500047963113
+        ],
+        "medianMs": 1.1342919897288084,
+        "groups": 29,
+        "jsonBytes": 1134,
+        "lookbackSeconds": 86400,
+        "validForObservedMaxDurationSeconds": 17043.906004428864,
+        "plan": [
+          [
+            7,
+            0,
+            163,
+            "SEARCH AppActivity USING INDEX index_appactivity_on_startdate (startDate>? AND startDate<?)"
+          ],
+          [
+            22,
+            0,
+            0,
+            "USE TEMP B-TREE FOR GROUP BY"
+          ]
+        ]
+      }
+    ]
+  },
+  "agentPageUsage": [
+    {
+      "name": "events",
+      "bytes": 326684672,
+      "payload": 217778677,
+      "unused": 97427583,
+      "cells": 1657175
+    },
+    {
+      "name": "at_event_blocks",
+      "bytes": 80965632,
+      "payload": 79692528,
+      "unused": 1186698,
+      "cells": 710
+    },
+    {
+      "name": "usage_events",
+      "bytes": 80736256,
+      "payload": 75249681,
+      "unused": 3977747,
+      "cells": 190019
+    },
+    {
+      "name": "sqlite_autoindex_events_1",
+      "bytes": 79683584,
+      "payload": 66258984,
+      "unused": 8458251,
+      "cells": 1577635
+    },
+    {
+      "name": "events_observed_at",
+      "bytes": 27656192,
+      "payload": 22085204,
+      "unused": 757063,
+      "cells": 1577635
+    },
+    {
+      "name": "events_source_recent",
+      "bytes": 21618688,
+      "payload": 16524189,
+      "unused": 298262,
+      "cells": 1577635
+    },
+    {
+      "name": "at_tool_keys",
+      "bytes": 17788928,
+      "payload": 15448028,
+      "unused": 89238,
+      "cells": 347568
+    },
+    {
+      "name": "usage_pricing",
+      "bytes": 16240640,
+      "payload": 14821233,
+      "unused": 346796,
+      "cells": 174312
+    },
+    {
+      "name": "at_tool_identity",
+      "bytes": 15912960,
+      "payload": 13043008,
+      "unused": 1793622,
+      "cells": 343238
+    },
+    {
+      "name": "sqlite_autoindex_usage_pricing_1",
+      "bytes": 14311424,
+      "payload": 12062594,
+      "unused": 1695829,
+      "cells": 170359
+    },
+    {
+      "name": "sqlite_autoindex_usage_events_1",
+      "bytes": 14311424,
+      "payload": 12062594,
+      "unused": 1695829,
+      "cells": 170359
+    },
+    {
+      "name": "events_hooks",
+      "bytes": 6778880,
+      "payload": 5396707,
+      "unused": 205865,
+      "cells": 385484
+    },
+    {
+      "name": "events_hook_provider",
+      "bytes": 5799936,
+      "payload": 4564620,
+      "unused": 61876,
+      "cells": 385484
+    },
+    {
+      "name": "at_events_hot",
+      "bytes": 1740800,
+      "payload": 1136151,
+      "unused": 220836,
+      "cells": 126239
+    },
+    {
+      "name": "events_terminal_handle",
+      "bytes": 1507328,
+      "payload": 1299630,
+      "unused": 120324,
+      "cells": 27654
+    },
+    {
+      "name": "observation_signatures",
+      "bytes": 987136,
+      "payload": 920990,
+      "unused": 52832,
+      "cells": 1842
+    },
+    {
+      "name": "usage_cursors",
+      "bytes": 724992,
+      "payload": 675049,
+      "unused": 24368,
+      "cells": 3990
+    },
+    {
+      "name": "sqlite_autoindex_usage_cursors_1",
+      "bytes": 651264,
+      "payload": 540536,
+      "unused": 95031,
+      "cells": 3815
+    },
+    {
+      "name": "events_coverage_at",
+      "bytes": 491520,
+      "payload": 395261,
+      "unused": 10124,
+      "cells": 28233
+    },
+    {
+      "name": "review_actions",
+      "bytes": 434176,
+      "payload": 425695,
+      "unused": 7963,
+      "cells": 8
+    },
+    {
+      "name": "human_decisions",
+      "bytes": 266240,
+      "payload": 243003,
+      "unused": 12005,
+      "cells": 1937
+    },
+    {
+      "name": "sqlite_autoindex_observation_signatures_1",
+      "bytes": 188416,
+      "payload": 148091,
+      "unused": 34968,
+      "cells": 1603
+    },
+    {
+      "name": "sqlite_autoindex_human_decisions_1",
+      "bytes": 176128,
+      "payload": 146044,
+      "unused": 23950,
+      "cells": 1874
+    },
+    {
+      "name": "usage_captured_sessions",
+      "bytes": 110592,
+      "payload": 94231,
+      "unused": 7634,
+      "cells": 1712
+    },
+    {
+      "name": "sqlite_autoindex_usage_captured_sessions_1",
+      "bytes": 106496,
+      "payload": 83981,
+      "unused": 17146,
+      "cells": 1687
+    },
+    {
+      "name": "billing_reports",
+      "bytes": 86016,
+      "payload": 78285,
+      "unused": 7527,
+      "cells": 11
+    },
+    {
+      "name": "events_session_ends_at",
+      "bytes": 32768,
+      "payload": 22285,
+      "unused": 5615,
+      "cells": 1592
+    },
+    {
+      "name": "events_reports_at",
+      "bytes": 24576,
+      "payload": 13496,
+      "unused": 8120,
+      "cells": 964
+    },
+    {
+      "name": "sqlite_schema",
+      "bytes": 12288,
+      "payload": 6604,
+      "unused": 5322,
+      "cells": 52
+    },
+    {
+      "name": "day_review_cache",
+      "bytes": 12288,
+      "payload": 5596,
+      "unused": 6577,
+      "cells": 17
+    },
+    {
+      "name": "usage_captured_state",
+      "bytes": 4096,
+      "payload": 47,
+      "unused": 4037,
+      "cells": 1
+    },
+    {
+      "name": "sqlite_autoindex_review_actions_1",
+      "bytes": 4096,
+      "payload": 199,
+      "unused": 3874,
+      "cells": 5
+    },
+    {
+      "name": "sqlite_autoindex_pricing_state_1",
+      "bytes": 4096,
+      "payload": 31,
+      "unused": 4048,
+      "cells": 3
+    },
+    {
+      "name": "sqlite_autoindex_pricing_catalogs_1",
+      "bytes": 4096,
+      "payload": 22,
+      "unused": 4063,
+      "cells": 1
+    },
+    {
+      "name": "sqlite_autoindex_manual_notes_1",
+      "bytes": 4096,
+      "payload": 0,
+      "unused": 4088,
+      "cells": 0
+    },
+    {
+      "name": "sqlite_autoindex_human_splits_1",
+      "bytes": 4096,
+      "payload": 0,
+      "unused": 4088,
+      "cells": 0
+    },
+    {
+      "name": "sqlite_autoindex_day_reviews_1",
+      "bytes": 4096,
+      "payload": 0,
+      "unused": 4088,
+      "cells": 0
+    },
+    {
+      "name": "sqlite_autoindex_day_review_cache_1",
+      "bytes": 4096,
+      "payload": 223,
+      "unused": 3817,
+      "cells": 16
+    },
+    {
+      "name": "sqlite_autoindex_billing_reports_1",
+      "bytes": 4096,
+      "payload": 279,
+      "unused": 3788,
+      "cells": 7
+    },
+    {
+      "name": "sqlite_autoindex_billing_projects_1",
+      "bytes": 4096,
+      "payload": 7,
+      "unused": 4078,
+      "cells": 1
+    },
+    {
+      "name": "sqlite_autoindex_billing_policies_1",
+      "bytes": 4096,
+      "payload": 179,
+      "unused": 3897,
+      "cells": 4
+    },
+    {
+      "name": "review_actions_at",
+      "bytes": 4096,
+      "payload": 59,
+      "unused": 4014,
+      "cells": 5
+    },
+    {
+      "name": "pricing_state",
+      "bytes": 4096,
+      "payload": 61,
+      "unused": 4015,
+      "cells": 3
+    },
+    {
+      "name": "pricing_catalogs",
+      "bytes": 4096,
+      "payload": 2175,
+      "unused": 1908,
+      "cells": 1
+    },
+    {
+      "name": "manual_notes_start",
+      "bytes": 4096,
+      "payload": 0,
+      "unused": 4088,
+      "cells": 0
+    },
+    {
+      "name": "manual_notes",
+      "bytes": 4096,
+      "payload": 0,
+      "unused": 4088,
+      "cells": 0
+    },
+    {
+      "name": "human_splits",
+      "bytes": 4096,
+      "payload": 0,
+      "unused": 4088,
+      "cells": 0
+    },
+    {
+      "name": "events_resources_at",
+      "bytes": 4096,
+      "payload": 280,
+      "unused": 3748,
+      "cells": 20
+    },
+    {
+      "name": "day_reviews",
+      "bytes": 4096,
+      "payload": 0,
+      "unused": 4088,
+      "cells": 0
+    },
+    {
+      "name": "billing_projects",
+      "bytes": 4096,
+      "payload": 1631,
+      "unused": 2452,
+      "cells": 1
+    },
+    {
+      "name": "billing_policies",
+      "bytes": 4096,
+      "payload": 1459,
+      "unused": 2609,
+      "cells": 4
+    },
+    {
+      "name": "at_pack_state",
+      "bytes": 4096,
+      "payload": 6,
+      "unused": 4078,
+      "cells": 1
+    }
+  ],
+  "agentKinds": [
+    [
+      "macos:activity",
+      740383
+    ],
+    [
+      "orca:worker",
+      394354
+    ],
+    [
+      "hook:tool_start",
+      172786
+    ],
+    [
+      "hook:tool_end",
+      170466
+    ],
+    [
+      "orca:coverage",
+      28224
+    ],
+    [
+      "orca:terminal",
+      27654
+    ],
+    [
+      "hook:child_stop",
+      14486
+    ],
+    [
+      "hook:prompt_submitted",
+      11152
+    ],
+    [
+      "hook:response_stop",
+      9429
+    ],
+    [
+      "hook:child_start",
+      2816
+    ],
+    [
+      "hook:session_start",
+      2146
+    ],
+    [
+      "hook:session_end",
+      1592
+    ],
+    [
+      "hook:interrupted",
+      381
+    ],
+    [
+      "agent_report:task_start",
+      326
+    ],
+    [
+      "agent_report:task_stop",
+      316
+    ],
+    [
+      "agent_report:work_context",
+      302
+    ],
+    [
+      "capture:capture_start",
+      270
+    ],
+    [
+      "hook:waiting",
+      230
+    ],
+    [
+      "capture:capture_stop",
+      132
+    ],
+    [
+      "macos:sleep",
+      75
+    ],
+    [
+      "macos:wake",
+      68
+    ],
+    [
+      "agent_report:resource",
+      20
+    ],
+    [
+      "capture:capture_settings",
+      18
+    ],
+    [
+      "capture:coverage",
+      9
+    ]
+  ],
+  "features": [
+    {
+      "topic": "Unité principale",
+      "agentTime": "Événement observé : activité, début/fin d’outil, worker, contexte…",
+      "timing": "Période AppActivity avec startDate et endDate.",
+      "decision": "Reprendre",
+      "principle": "Ajouter une projection de périodes calculées ; garder les preuves agent à côté.",
+      "evidence": "Schémas locaux + code"
+    },
+    {
+      "topic": "Durée",
+      "agentTime": "Les durées sont reconstruites par les réducteurs puis les règles de crédit.",
+      "timing": "Les deux bornes de chaque activité sont déjà présentes en colonnes.",
+      "decision": "Adapter",
+      "principle": "Persister les résultats de nos réducteurs, sans remplacer leurs règles par une simple somme.",
+      "evidence": "Code Agent Time / schéma Timing"
+    },
+    {
+      "topic": "Applications, titres, chemins",
+      "agentTime": "Identités répétées dans les événements ; compression et contextes partagés dans les blocs.",
+      "timing": "Tables Application, Title et Path ; références par identifiant entier.",
+      "decision": "Reprendre",
+      "principle": "Dictionnaires communs et références dans une projection, pas une migration brutale des UUID de preuve.",
+      "evidence": "Schémas locaux"
+    },
+    {
+      "topic": "Projet attribué",
+      "agentTime": "Événements, contexte agent, ressources, règles et décisions/splits sont réconciliés à la lecture.",
+      "timing": "AppActivity.projectID ; TaskActivity.projectID ; Project.parentID pour la hiérarchie.",
+      "decision": "Adapter",
+      "principle": "Conserver une attribution calculée versionnée avec la provenance et les corrections utilisateur.",
+      "evidence": "Schémas + code"
+    },
+    {
+      "topic": "Détail de navigation",
+      "agentTime": "Home reçoit encore le résumé riche : intervalles, sessions, problèmes et identifiants de preuve.",
+      "timing": "La table d’activités permet une sélection courte et groupée. Leur requête UI exacte n’est pas connue.",
+      "decision": "Reprendre",
+      "principle": "Un résultat Home compact ; détails seulement quand on les ouvre.",
+      "evidence": "Mesures + capacité du schéma"
+    },
+    {
+      "topic": "Coût d’un jour",
+      "agentTime": "Lecture d’une fenêtre de preuves, décompression, reconstruction, corrections et compteurs.",
+      "timing": "Une agrégation des intervalles persistés est possible directement en SQL.",
+      "decision": "Reprendre",
+      "principle": "Réduire le travail obligatoire au changement de date.",
+      "evidence": "Chemin Agent Time vérifié ; requête d’audit Timing"
+    },
+    {
+      "topic": "Cache",
+      "agentTime": "Gros graphes JavaScript ; les jours observés dépassent les budgets : un seul reste en cache.",
+      "timing": "Politique de cache interne inconnue ; aucune table de totaux journaliers trouvée dans SQLite.db.",
+      "decision": "Adapter",
+      "principle": "Cache léger borné et invalidé sur ses vraies dépendances ; ne pas inventer leur cache.",
+      "evidence": "Mesures / limite explicite"
+    },
+    {
+      "topic": "Compteurs MCP",
+      "agentTime": "La lecture d’évidence précède le mémo ; le bloc des déclarations la redemande séparément.",
+      "timing": "TaskActivity sépare les entrées de temps ; le MCP officiel pilote notamment ces entrées.",
+      "decision": "Reprendre",
+      "principle": "Partager les lectures d’évidence, réévaluer les baux actifs avec l’horloge actuelle.",
+      "evidence": "Code / documentation officielle"
+    },
+    {
+      "topic": "Compression",
+      "agentTime": "1 451 396 événements empaquetés : environ 748,4 Mio logiques dans 76,0 Mio de blocs.",
+      "timing": "Colonnes compactes pour les activités ; sync.db contient aussi des payloads compressés.",
+      "decision": "Adapter",
+      "principle": "Compression pour l’archive et le cache, colonnes pour les lectures fréquentes.",
+      "evidence": "Mesures physiques"
+    },
+    {
+      "topic": "Indexation",
+      "agentTime": "Timestamp/source et index d’expressions JSON ; index d’UUID important.",
+      "timing": "Index date et index couvrant projet, suppression, début, fin.",
+      "decision": "Reprendre",
+      "principle": "Indexer les colonnes effectivement filtrées d’une projection ; EXPLAIN avant d’ajouter un index.",
+      "evidence": "Index locaux"
+    },
+    {
+      "topic": "Identifiants",
+      "agentTime": "UUID et identités composées nécessaires pour les événements, agents et imports.",
+      "timing": "Clés entières locales et références compactes.",
+      "decision": "Adapter",
+      "principle": "Garder les UUID stables en entrée ; utiliser des clés locales dans les vues calculées.",
+      "evidence": "Schémas + contraintes produit"
+    },
+    {
+      "topic": "Reconstruction incrémentale",
+      "agentTime": "Chemin incrémental existant pour certaines observations humaines ; les autres événements peuvent relancer un replay.",
+      "timing": "Les périodes déjà présentes constituent un modèle de lecture. La logique de mise à jour du tracker n’est pas inspectée.",
+      "decision": "Adapter",
+      "principle": "Étendre le traitement incrémental avec les mêmes réducteurs, gérer preuves tardives et changements de règles.",
+      "evidence": "Code / inférence signalée"
+    },
+    {
+      "topic": "Horloge et précision",
+      "agentTime": "Horloge monotone, pauses, manque d’observations, seuils, crédit à la minute, règles de facturation.",
+      "timing": "Bornes REAL en secondes ; activités sous-seconde observées ; règles internes non auditées.",
+      "decision": "Ne pas copier tel quel",
+      "principle": "Une durée SQL de Timing n’est pas automatiquement notre temps mesuré ou facturable.",
+      "evidence": "Données + règles Agent Time"
+    },
+    {
+      "topic": "Temps agent parallèle",
+      "agentTime": "Sessions, sous-agents, outils, hosts et identités ; cumul agent distinct du temps mur.",
+      "timing": "Le schéma AppActivity observé décrit le premier plan humain, pas nos exécutions simultanées.",
+      "decision": "Ne pas copier tel quel",
+      "principle": "Maintenir une piste agent propre et ses preuves ; ne pas l’écraser en une activité humaine unique.",
+      "evidence": "Schémas / besoin produit"
+    },
+    {
+      "topic": "Synchronisation et historique",
+      "agentTime": "Journal d’observations dans la base de travail ; archives séparées.",
+      "timing": "SQLite.db pour les entités et sync.db pour un journal d’opérations avec payloads et compression.",
+      "decision": "Adapter",
+      "principle": "Séparer lecture quotidienne et preuves ; leur journal de synchronisation n’est pas notre journal de mesure.",
+      "evidence": "Deux schémas locaux"
+    },
+    {
+      "topic": "Annulation et corrections",
+      "agentTime": "Décisions, splits, historique d’actions et rapports de facturation sauvegardés.",
+      "timing": "Affectation portée par les activités ; suppression logique et entrées manuelles.",
+      "decision": "Adapter",
+      "principle": "Projections recalculables avec lineage ; garder notre undo et les rapports existants.",
+      "evidence": "Schémas + code"
+    },
+    {
+      "topic": "Réduire la collecte",
+      "agentTime": "740 383 échantillons humains et 394 354 états worker dans l’instantané.",
+      "timing": "864 778 périodes humaines sur près de deux ans.",
+      "decision": "Ne pas copier tel quel",
+      "principle": "Ne pas enlever arbitrairement des points : ils portent aussi l’idle, les seuils et les interruptions. Auditer chaque suppression avec preuve d’équivalence.",
+      "evidence": "Comptages ; unités différentes"
+    },
+    {
+      "topic": "Démarrage",
+      "agentTime": "Initialisation du catalogue/stockage et premières requêtes ; le délai Home n’est pas tout le démarrage.",
+      "timing": "Processus natifs et tracker distincts ; pas de profil interne ni de RAM complète mesurés ici.",
+      "decision": "Adapter",
+      "principle": "Profiler séparément démarrage, collecte et lecture. Ne pas attribuer tout l’écart à Vue ou à SQLite.",
+      "evidence": "Code / limite de mesure"
+    },
+    {
+      "topic": "Rendu et volume",
+      "agentTime": "Environ 0,38–0,60 s après la réponse principale dans les cas testés ; 9–13 Mo transférés.",
+      "timing": "Un regroupement SQL d’audit renvoie 29–52 lignes et 1–2 Kio, pour un périmètre plus étroit.",
+      "decision": "Reprendre",
+      "principle": "Renvoyer ce que le panneau doit dessiner ; comparaison de périmètres, pas ratio magique de performance.",
+      "evidence": "Mesures non équivalentes signalées"
+    },
+    {
+      "topic": "Productivité",
+      "agentTime": "Aucun score demandé ; temps humain et temps agent restent des mesures.",
+      "timing": "Une colonne productivityScore existe dans Project.",
+      "decision": "Ne pas reprendre",
+      "principle": "Ni nécessaire à la vitesse, ni dans le périmètre produit accepté.",
+      "evidence": "Schéma / décision utilisateur"
+    }
+  ]
+}
