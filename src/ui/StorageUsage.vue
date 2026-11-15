@@ -116,6 +116,7 @@ async function cancel() {
 onMounted(() => {
   void refresh();
 });
+async function copyTemporaryFolder(){const folder=usage.value?.unverifiedArchiveTemps?.folder;if(!folder)return;try{await navigator.clipboard.writeText(folder);toast.success('Backup folder path copied.');}catch(cause){error.value=humanizeError(cause);}}
 </script>
 <template>
   <AppCard as="section" padding="regular" class="storage-usage" aria-labelledby="storage-title">
@@ -144,6 +145,10 @@ onMounted(() => {
       </p>
       <p v-else-if="diskLow" class="storage-error">Your Mac is almost out of space. Capture pauses if less than 1 GB is free.</p>
 
+      <div v-if="usage.unverifiedArchiveTemps?.files" class="notice">
+        <p>{{ size(usage.unverifiedArchiveTemps.bytes) }} in {{ usage.unverifiedArchiveTemps.files }} unverified temporary backup files. These older files are kept because their owner cannot be verified. Their size is included above.</p>
+        <AppButton @click="copyTemporaryFolder">Copy backup folder path to review files</AppButton>
+      </div>
       <ul class="storage-list">
         <li v-for="part in parts" :key="part.name">
           <i :style="{ background: part.color }"></i>

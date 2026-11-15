@@ -1,4 +1,5 @@
 import {openEventDatabase,isPackedEventDatabase,eventStorageStats} from './event-database.ts';
+import {archiveName} from './archive-storage.ts';
 import {DatabaseSync} from 'node:sqlite';
 import {lstatSync,opendirSync,statfsSync} from 'node:fs';
 import {join} from 'node:path';
@@ -6,7 +7,7 @@ import type {StoragePressureNotice} from './storage-pressure-status.ts';
 
 export interface StorageSize {bytes:number;files:number;truncated:boolean;}
 export interface StorageUsage {
- derived?:StorageSize;database:StorageSize;wal:StorageSize;sharedMemory:StorageSize;indexes:StorageSize;
+ unverifiedArchiveTemps?:StorageSize&{folder:string};derived?:StorageSize;database:StorageSize;wal:StorageSize;sharedMemory:StorageSize;indexes:StorageSize;
  spool:StorageSize;runtimes:StorageSize;exports:StorageSize;
  history?:ReturnType<typeof eventStorageStats>&{efficient:boolean};storageLimitMB?:number;care?:{at:number|null;error:string|null;paused:boolean;pressure?:StoragePressureNotice};
  totalBytes:number;eventCount:number;freeBytes:number|null;
@@ -34,6 +35,16 @@ function directorySize(path:string,maxEntries=100_000):StorageSize{
  }
  return result;
 }
+/** Legacy producer names are recognizable, but ownership is not: expose them
+ * without treating them as safe to delete or counting their bytes twice. */
+function unverifiedArchiveTemps(root:string):StorageSize&{folder:string}{
+ const folder=join(root,'exports'),result={...empty(),folder};let dir;
+ try{if(lstatSync(folder).isSymbolicLink())return result;dir=opendirSync(folder);}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return result;throw error;}
+ try{let entry,visited=0;while((entry=dir.readSync())){if(++visited>100000){result.truncated=true;break;}if(!entry.isFile()||entry.isSymbolicLink())continue;
+ const base=entry.name.endsWith('.sqlite.tmp')?entry.name.slice(0,-4):entry.name.replace(/\.[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.tmp$/,'');
+ if(base===entry.name||!archiveName.test(base))continue;const item=fileSize(join(folder,entry.name));result.bytes+=item.bytes;result.files+=item.files;
+ }}finally{dir.closeSync();}return result;
+}
 export function storageUsage(root:string,now=Date.now()/1000):StorageUsage{
  const database=fileSize(join(root,'events.sqlite')),wal=fileSize(join(root,'events.sqlite-wal'));
  const sharedMemory=fileSize(join(root,'events.sqlite-shm'));
@@ -58,6 +69,6 @@ export function storageUsage(root:string,now=Date.now()/1000):StorageUsage{
     .map(row=>({date:String(row.date),source:String(row.source),events:Number(row.events),payloadBytes:Number(row.payloadBytes)}));
   }finally{db.close();}
  }
- return {derived,database,wal,sharedMemory,indexes,spool,runtimes,exports,eventCount,byDay,freeBytes,history,
+ return {unverifiedArchiveTemps:unverifiedArchiveTemps(root),derived,database,wal,sharedMemory,indexes,spool,runtimes,exports,eventCount,byDay,freeBytes,history,
   totalBytes:derived.bytes+database.bytes+wal.bytes+sharedMemory.bytes+spool.bytes+runtimes.bytes+exports.bytes};
 }
