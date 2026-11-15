@@ -37,7 +37,7 @@ export function storageUsage(root:string,now=Date.now()/1000):StorageUsage{
  const sharedMemory=fileSize(join(root,'events.sqlite-shm'));
  const spool=directorySize(join(root,'spool')),runtimes=directorySize(join(root,'hook-runtime'));
  const exports=directorySize(join(root,'exports'));
- const derived=empty();for(const name of ['derived-periods.sqlite','derived-periods.sqlite-journal','derived-periods.sqlite-wal','derived-periods.sqlite-shm']){const item=fileSize(join(root,name));derived.bytes+=item.bytes;derived.files+=item.files;}
+ const derived=empty();for(const name of ['ingestion.sqlite','ingestion.sqlite-journal','ingestion.sqlite-wal','ingestion.sqlite-shm','derived-periods.sqlite','derived-periods.sqlite-journal','derived-periods.sqlite-wal','derived-periods.sqlite-shm']){const item=fileSize(join(root,name));derived.bytes+=item.bytes;derived.files+=item.files;}
  const indexes=empty();
  let freeBytes:number|null=null;
  try{const volume=statfsSync(root);freeBytes=Number(volume.bavail)*Number(volume.bsize);}catch{/* Report storage even when filesystem capacity is unavailable. */}

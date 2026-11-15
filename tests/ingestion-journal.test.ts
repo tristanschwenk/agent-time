@@ -87,3 +87,10 @@ for(const packed of [false,true])test(`rowid reuse stays visible and highwater r
  assert.equal(ingestionJournalState(db).sequence,2);assert.equal(db.prepare('SELECT max_rowid FROM at_ingestion_highwater WHERE id=1').get()?.max_rowid,2);
  put('increasing');assert.equal(ingestionJournalState(db).sequence,2);db.close();
 });
+
+for(const packed of [false,true])test(`journal definitions upgrade transactionally ${packed}`,()=>{
+ const db=openEventDatabase(':memory:');try{if(packed)createPackedEventSchema(db);else db.exec('CREATE TABLE events(event_id TEXT PRIMARY KEY,observed_at REAL,payload TEXT)');ensureIngestionJournal(db,packed);
+ db.exec('UPDATE at_ingestion_sequence SET schema_version=0;DROP TRIGGER at_ingestion_event_update');const old=ingestionJournalState(db).sequence;db.exec('BEGIN');ensureIngestionJournal(db,packed);assert.equal(readIngestionChanges(db,old,10)[0]?.kind,'blocks');db.exec('ROLLBACK');assert.equal(ingestionJournalState(db).sequence,old);assert.equal(db.prepare('SELECT schema_version FROM at_ingestion_sequence').get()!.schema_version,0);
+ ensureIngestionJournal(db,packed);const event=makeEvent('macos','activity',{eventId:'move',observedAt:10});insertEventRow(db,event.eventId,10,JSON.stringify(event));const before=ingestionJournalState(db).sequence;db.exec('UPDATE events SET observed_at=20');const change=readIngestionChanges(db,before,10)[0]!;assert.equal(change.old?.indexedAt,10);assert.equal(change.next?.indexedAt,20);assert.equal(change.next?.observedAt,10);
+ }finally{db.close();}
+});

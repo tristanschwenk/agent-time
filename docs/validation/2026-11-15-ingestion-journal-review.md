@@ -1,3 +1,5 @@
+> Historical task checkpoint. Final integration, review and typecheck passed; see [final validation](2026-11-15-ingestion-periods.md). The temporary blockers below describe the earlier checkpoint only.
+
 # Task 1: ingestion journal and tool execution projection
 
 Implemented only new journal/reconciliation modules and their dedicated tests. No user database was opened or changed.

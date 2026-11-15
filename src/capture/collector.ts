@@ -1,3 +1,5 @@
+import{IngestionCoordinator}from'./ingestion-worker.ts';
+import{IngestionModel}from'./ingestion-model.ts';
 import{encodeHome}from'./home-wire.ts';
 import{compactHome,type HomeSummary}from'./home-summary.ts';
 import{PeriodProjection}from'./period-projection.ts';
@@ -85,6 +87,9 @@ const LEGACY_STALE_FINGERPRINT=`${FINGERPRINT_VERSION}legacy-stale`;
 
 export class Collector {
   readonly output:string; readonly store:EventStore;
+  private ingestion?:IngestionCoordinator;private ingestionUnsubscribe?:()=>void;
+  private enableIngestion(){if(this.closing)return;this.ingestion??=new IngestionCoordinator(this.output);this.ingestion.wake();}
+  prepareIngestion(){this.enableIngestion();return this.ingestion!.prepare();}
   private running=false; private timer:ReturnType<typeof setTimeout>|undefined; private deadline:ReturnType<typeof setTimeout>|undefined;
   private activityProbe:MacActivityProbe; private inFlight:Promise<void>|undefined; private lastPoll:number|null=null;
   private lastError:string|null=null; private macos:Record<string,unknown>|null=null; private lockOwned=false;
@@ -131,7 +136,7 @@ export class Collector {
   private pressureQueued=false;private pressureRecovery:Promise<void>|undefined;
   private storageResumeTimer:ReturnType<typeof setTimeout>|undefined;
   private storageResumeCheck:Promise<void>|undefined;private closing=false;
-  private readStorageUsage(){let usage=quickStorageUsage(this.output);if(storagePolicyDecision(usage,this.surfaces.storageLimitMB)!=='ok'&&this.projection?.discard())usage=quickStorageUsage(this.output);return usage;}
+  private readStorageUsage(){let usage=quickStorageUsage(this.output);if(storagePolicyDecision(usage,this.surfaces.storageLimitMB)!=='ok'&&this.projection?.discard())usage=quickStorageUsage(this.output);if(storagePolicyDecision(usage,this.surfaces.storageLimitMB)!=='ok'&&existsSync(join(this.output,'ingestion.sqlite')))try{const model=new IngestionModel(this.output,false);try{if(model.discard())usage=quickStorageUsage(this.output);}finally{model.close();}}catch{}return usage;}
   private runPressureCompression(){return runStorageTask<PressureRecoveryResult>({op:'pressure',database:join(this.output,'events.sqlite'),output:this.output,now:Date.now()/1000});}
   private releaseIdleLock(){
     if(!this.running&&!this.starting&&!this.stopping&&!this.pressureQueued&&!this.pressureRecovery&&this.lockOwned){
@@ -241,6 +246,8 @@ export class Collector {
     this.usageReader=new UsageReader(this.store.database,undefined,this.reader);this.hookInstallation=new HookInstallation(output);this.mcpInstallation=new McpInstallation(output);this.claudeStatusLine=new ClaudeStatusLineInstallation(output);this.syncUsage();
     this.removeStaleExportTemporaries();
     this.storageCareStatus();this.scheduleStorageResume();
+    this.ingestionUnsubscribe=this.store.onIngestionHint(()=>{if(this.running||this.ingestion)this.enableIngestion();});
+    if(this.store.database.prepare('SELECT 1 FROM billing_projects LIMIT 1').get())this.enableIngestion();
   }
   private loadSettings(){
     const settings=join(this.output,'settings.json');
@@ -281,7 +288,7 @@ export class Collector {
   private syncUsage(){const s=this.surfaces;this.usageReader.configureProviders(Object.fromEntries(agents.map(agent=>[agent.id,s[agent.usageSetting]===true])));if(this.running&&s.tokenUsage&&agents.some(agent=>s[agent.usageSetting]===true))this.usageReader.start();else void this.usageReader.stop();}
   private orcaAvailable(){return this.reader!==callOrca||orcaCliAvailable();}
   private currentWorkingAgents(now=Date.now()/1000){return this.running?recentWorkingAgentCount(this.surfaces.orcaPolling?this.store.recent('orca',100):[],this.store.recent('hook',100).filter(event=>agents.some(agent=>agent.id===event.provider&&this.surfaces[agent.setting])),now):0;}
-  status(){const orcaAvailable=this.orcaAvailable();return {running:this.running,orcaAvailable,orcaPolling:this.surfaces.orcaPolling&&orcaAvailable,surfaces:{...this.surfaces},sources:sourceMetadata,lastPoll:this.lastPoll,lastError:this.lastError,eventCount:this.store.count(),workingAgents:this.currentWorkingAgents(),macos:this.macos,output:this.output,storageCare:this.storageCareStatus(),startupIssues:[...this.startupIssues]};}
+  status(){const orcaAvailable=this.orcaAvailable();return {running:this.running,orcaAvailable,orcaPolling:this.surfaces.orcaPolling&&orcaAvailable,surfaces:{...this.surfaces},sources:sourceMetadata,lastPoll:this.lastPoll,lastError:this.lastError,eventCount:this.store.count(),workingAgents:this.currentWorkingAgents(),macos:this.macos,output:this.output,storageCare:this.storageCareStatus(),startupIssues:[...this.startupIssues],ingestion:this.ingestion?.status()??null};}
   trayStatus(){
     const now=new Date(),date=localDate(now.getTime()/1000);
     // Token usage is read only when the user enabled it.
@@ -574,7 +581,7 @@ export class Collector {
     const pending=this.websiteResolver.resolve(url,known,recent).then(result=>{if(result&&this.running&&revision===this.websiteRevision){if(this.websiteMatches.get(key)?.projectPath!==result.projectPath)this.websiteApplied.delete(key);this.websiteMatches.set(key,result);if(this.websiteMatches.size>200){const oldest=[...this.websiteMatches].sort((a,b)=>a[1].observedAt-b[1].observedAt).slice(0,this.websiteMatches.size-200);for(const [oldKey] of oldest){this.websiteMatches.delete(oldKey);this.websiteApplied.delete(oldKey);}}}}).catch(()=>{/* Keep unverified website activity unassigned. */}).finally(()=>{if(this.websitePending.get(key)===pending)this.websitePending.delete(key);});
     this.websitePending.set(key,pending);
   }
-  private invalidateSummaries(){this.summaryCache=undefined;this.viewSnapshots.clear();this.homeSnapshots.clear();this.days.invalidate();this.decorated.clear();this.reviewCache=undefined;this.knownWorkspaceCache=undefined;}
+  private invalidateSummaries(){this.ingestion?.wake();this.summaryCache=undefined;this.viewSnapshots.clear();this.homeSnapshots.clear();this.days.invalidate();this.decorated.clear();this.reviewCache=undefined;this.knownWorkspaceCache=undefined;}
   updateSettings(patch:Partial<CaptureSettings>){
     validateSettings(patch);
     if(this.stopping)throw new Error('Capture is stopping');
@@ -807,7 +814,7 @@ export class Collector {
   billingReportProgress(id:string){return this.billingReports?.progress(id)||null;}
   billingReportHistory(request:Parameters<typeof billingReportHistory>[1]){return billingReportHistory(this.output,request);}
   billingProjects(){return billingProjects(this.output);}
-  saveBillingProject(project:unknown,expectedRevision?:number){return new BillingStore(this.store.database).saveProject(validateBillingProject(project),expectedRevision);}
+  saveBillingProject(project:unknown,expectedRevision?:number){const saved=new BillingStore(this.store.database).saveProject(validateBillingProject(project),expectedRevision);this.enableIngestion();return saved;}
   billingReport(request:unknown){return (this.billingReports??=new BillingReports(this.output)).run(validateBillingRequest(request));}
   reportedWork(date:string){
     const first=new Date(`${date}T00:00:00`),last=new Date(first);
@@ -912,7 +919,7 @@ export class Collector {
     try{
       if(!await this.ensureStorageCapacity())throw new Error(this.lastError!);
       if(!this.lockOwned||this.startEpoch!==epoch)throw new Error('Capture start was cancelled');
-      this.running=true;
+      this.running=true;this.enableIngestion();
       this.nextStorageCheck=Date.now()+10000;this.scheduleStorageCare(30000);
       this.store.put(makeEvent('capture','capture_start'));
       this.activityProbe.start();
@@ -1002,5 +1009,5 @@ export class Collector {
     finally{if(this.lockOwned&&!this.pressureQueued){const lock=join(this.output,'capture.lock');if(ownsLock(lock))unlinkSync(lock);this.lockOwned=false;}}
     return this.status();
   }
-  async close(){this.closing=true;clearTimeout(this.storageResumeTimer);this.linear.close();await this.stop(true);await this.storageResumeCheck;await this.pressureRecovery;await this.storageTask?.catch(()=>{});await this.usageReader.close();this.projection.close();this.store.close();}
+  async close(){this.closing=true;this.ingestionUnsubscribe?.();await this.ingestion?.close();clearTimeout(this.storageResumeTimer);this.linear.close();await this.stop(true);await this.storageResumeCheck;await this.pressureRecovery;await this.storageTask?.catch(()=>{});await this.usageReader.close();this.projection.close();this.store.close();}
 }

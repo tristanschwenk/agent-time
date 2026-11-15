@@ -1,3 +1,5 @@
+import{resourceKey}from'./reported-resources.ts';
+import{IngestionModel,type PreparedCreditedInput}from'./ingestion-model.ts';
 import{withProjectPaths,validProjectPaths,type ProjectPathDependency}from'./project-path.ts';
 import type {BillingProgress} from './billing-progress.ts';
 import {validBillingProgressId} from './billing-progress.ts';
@@ -66,9 +68,44 @@ function plainDecimal(value:number):string{
  const text=String(value);if(!/[eE]/.test(text))return text;const [coefficient,exponent]=text.toLowerCase().split('e'),[integer,fraction='']=coefficient!.split('.'),digits=integer!+fraction,point=integer!.length+Number(exponent);
  return point<=0?'0.'+'0'.repeat(-point)+digits:point>=digits.length?digits+'0'.repeat(point-digits.length):digits.slice(0,point)+'.'+digits.slice(point);
 }
+/** Ownership/measurement dependencies only. Commercial policies still run on
+ * every report and do not require replaying source evidence when a rate changes. */
+export function creditedConfiguration(project:BillingProject,projects:BillingProject[],settings:ReturnType<typeof snapshotSettings>):string{
+ const ownership=(p:BillingProject)=>({id:p.id,name:p.name,aliases:p.aliases,sources:p.sources,timezone:p.timezone});
+ return createHash('sha256').update(JSON.stringify([1,ownership(project),projects.map(ownership),settings.idleThreshold,settings.agentIdleThreshold,Intl.DateTimeFormat().resolvedOptions().timeZone,process.versions.tz])).digest('hex');
+}
+/** Prepare the unchanged billing input during ingestion, without creating a report. */
+export function prepareCreditedInput(output:string,db:DatabaseSync,project:BillingProject,projects:BillingProject[],date:string,settings:ReturnType<typeof snapshotSettings>,asOf=Date.now()/1000):PreparedCreditedInput{
+ const sessions=new Map<string,string[]>(),tasks=new Set<string>(),urls=new Set<string>();
+ const tracked=withProjectPaths(()=>computeDayInput(output,db,project,projects,date,settings,asOf,{snapshot(data){
+  for(const interval of data.summary.intervals)if(interval.state==='human'&&interval.browserUrl){const key=resourceKey(interval.browserUrl);if(key)urls.add(key);}
+  for(const item of [...data.summary.sessions,...data.events])if(item.provider&&item.sessionId)sessions.set(JSON.stringify([item.provider,item.sessionId]),[item.provider,item.sessionId]);
+  for(const event of data.events){if(event.kind==='task_stop'&&typeof event.data?.taskCounterId==='string')tasks.add(event.data.taskCounterId);if(event.kind==='task_start')tasks.add(event.eventId);}
+ }}));
+ const dayEnd=billingDayStart(nextBillingDate(date),project.timezone),end=tracked.value.end;
+ let validUntil=Infinity;
+ if(asOf<dayEnd){
+  // Only advance the read clock when all captured spans/exclusions are settled.
+  // Open intervals or clipping at asOf retain the original live calculation.
+  if(tracked.value.spans.some(s=>s.end>=end)||tracked.value.excluded.some(s=>s.end>=end))validUntil=asOf;
+  else{
+   const next=(sql:string,from:number,offset=0)=>{const row=db.prepare(sql).get(from);return row?Number(row.at)-offset:Infinity;};
+   const activity=isPackedEventDatabase(db)?'activity_sample=1':"json_extract(payload,'$.source')='macos' AND json_extract(payload,'$.kind')='activity'";
+   const nonactivity=isPackedEventDatabase(db)?'activity_sample=0':"NOT(json_extract(payload,'$.source')='macos' AND json_extract(payload,'$.kind')='activity')";
+   const localMidnight=new Date(asOf*1000);localMidnight.setHours(24,0,0,0);
+   validUntil=Math.min(dayEnd,localMidnight.getTime()/1000,next('SELECT observed_at at FROM events WHERE observed_at>=? ORDER BY observed_at LIMIT 1',asOf),
+    next(`SELECT observed_at at FROM events WHERE observed_at>=? AND (${nonactivity}) ORDER BY observed_at LIMIT 1`,asOf+86400+settings.agentIdleThreshold,86400+settings.agentIdleThreshold),
+    next(`SELECT observed_at at FROM events WHERE observed_at>=? AND ${activity} ORDER BY observed_at LIMIT 1`,asOf+60,60),
+    next("SELECT observed_at at FROM events WHERE observed_at>=? AND json_extract(payload,'$.source')='agent_report' AND json_extract(payload,'$.kind')='resource' ORDER BY observed_at LIMIT 1",asOf+31*86400,31*86400));
+   if(tracked.value.coverageComplete){const row=db.prepare(`SELECT observed_at at FROM events WHERE observed_at<? AND ${activity} ORDER BY observed_at DESC LIMIT 1`).get(asOf);validUntil=Math.min(validUntil,row?Number(row.at)+300:asOf);}
+  }
+ }
+ return{value:tracked.value,paths:tracked.paths,sessions:[...sessions.values()],tasks:[...tasks],urls:[...urls],asOf:Math.min(asOf,dayEnd),validUntil,dayEnd,agentIdleThreshold:settings.agentIdleThreshold};
+}
 /** Final billing input is much smaller than a proof-rich Snapshot. Persist only
  * completed days; source signatures and project ownership are still verified. */
 function dayInput(output:string,db:DatabaseSync,project:BillingProject,projects:BillingProject[],date:string,settings:ReturnType<typeof snapshotSettings>,asOf:number):BillingDayInput{
+ if(existsSync(join(output,'ingestion.sqlite')))try{const model=new IngestionModel(output,false);try{const prepared=model.get(db,project.id,date,creditedConfiguration(project,projects,settings),asOf);if(prepared)return prepared;}finally{model.close();}}catch{/* Source calculation remains authoritative. */}
  const start=billingDayStart(date,project.timezone),end=billingDayStart(nextBillingDate(date),project.timezone);
  const key=()=>{const source=end<=asOf?persistedBillingSnapshotKey(db,start,end,{...settings,countTaskCounters:false}):undefined;return source?createHash('sha256').update(JSON.stringify([1,source,project,projects])).digest('hex'):undefined;};
  const signature=key();if(!signature)return computeDayInput(output,db,project,projects,date,settings,asOf);
@@ -80,9 +117,9 @@ function dayInput(output:string,db:DatabaseSync,project:BillingProject,projects:
   return tracked.value;
  }finally{projection.close();}
 }
-function computeDayInput(output:string,db:DatabaseSync,project:BillingProject,projects:BillingProject[],date:string,settings:ReturnType<typeof snapshotSettings>,asOf:number):BillingDayInput{
+function computeDayInput(output:string,db:DatabaseSync,project:BillingProject,projects:BillingProject[],date:string,settings:ReturnType<typeof snapshotSettings>,asOf:number,prepare?:{snapshot:(data:Snapshot)=>void}):BillingDayInput{
  const start=billingDayStart(date,project.timezone),end=Math.min(billingDayStart(nextBillingDate(date),project.timezone),asOf);
- const data=snapshot(output,start,end,{countTaskCounters:false,billingEvidence:true,persistedOnly:true,database:db,settings});const spans:BillingSpan[]=[];
+ const data=snapshot(output,start,end,{countTaskCounters:false,billingEvidence:true,persistedOnly:true,database:db,settings,bypassProjection:Boolean(prepare)});prepare?.snapshot(data);const spans:BillingSpan[]=[];
  let attributionConflict=false;
  for(const i of attributedIntervals(data)){
   if(i.state!=='human'&&i.state!=='grouped'||i.attributionSource==='task-counter'||i.userAttribution==='unassigned')continue;

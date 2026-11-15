@@ -1,0 +1,153 @@
+{
+  "before": {
+    "ms": 47159.632042,
+    "peakRssMiB": 972.546875,
+    "rssMiB": 671.96875,
+    "replyBytes": 21302,
+    "equal": false
+  },
+  "before-isolated": {
+    "ms": 43639.665791,
+    "peakRssMiB": 1070.25,
+    "rssMiB": 647.546875,
+    "replyBytes": 21302,
+    "equal": true
+  },
+  "after": {
+    "ms": 129.60625,
+    "peakRssMiB": 135.453125,
+    "rssMiB": 135.46875,
+    "replyBytes": 21302,
+    "equal": true
+  },
+  "after-isolated": {
+    "ms": 135.74775,
+    "peakRssMiB": 135.890625,
+    "rssMiB": 135.90625,
+    "replyBytes": 21302,
+    "equal": true
+  },
+  "ingestion": {
+    "ms": 78806.94900000001,
+    "peakRssMiB": 474.984375,
+    "steps": 86,
+    "scanned": 1602946,
+    "prepared": 38,
+    "dirty": 0,
+    "periods": 14008,
+    "tools": 174693,
+    "cursor": 3660889,
+    "bytes": 136507392
+  },
+  "targeted": {
+    "ms": 6201.487583,
+    "dirty": [
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21"
+    ],
+    "prepared": 3,
+    "unrelatedRetained": 35,
+    "peakRssMiB": 433.953125,
+    "addedProofs": 2
+  },
+  "after-late": {
+    "ms": 157.73416699999996,
+    "peakRssMiB": 133.359375,
+    "rssMiB": 133.375,
+    "replyBytes": 21302,
+    "equal": false
+  },
+  "before-late": {
+    "ms": 45126.567792,
+    "peakRssMiB": 770.671875,
+    "rssMiB": 569.703125,
+    "replyBytes": 21302,
+    "equal": true
+  },
+  "proofs-before": {
+    "events": {
+      "count": 1602946,
+      "sha256": "8daf034be7a7ed6a7f4b5cc3328b3773323c0c3e9de63bdc38438e029b810e50"
+    },
+    "at_event_blocks": {
+      "count": 710,
+      "sha256": "3ae61204ffb19138716dd0a4181bfb7eaea34875e1642cd51d32eb9e25cf4d9c"
+    },
+    "human_decisions": {
+      "count": 1874,
+      "sha256": "07f1793e818cd72b387f3a97ed036099acaa0e481ccbcf8bba6d97aa7436c263"
+    },
+    "human_splits": {
+      "count": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "proofs-after": {
+    "events": {
+      "count": 1602946,
+      "sha256": "8daf034be7a7ed6a7f4b5cc3328b3773323c0c3e9de63bdc38438e029b810e50"
+    },
+    "at_event_blocks": {
+      "count": 710,
+      "sha256": "3ae61204ffb19138716dd0a4181bfb7eaea34875e1642cd51d32eb9e25cf4d9c"
+    },
+    "human_decisions": {
+      "count": 1874,
+      "sha256": "07f1793e818cd72b387f3a97ed036099acaa0e481ccbcf8bba6d97aa7436c263"
+    },
+    "human_splits": {
+      "count": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "proofsEqual": true,
+  "timingSpeedup": 321.47616289036097,
+  "peakRssReductionPercent": 87.30290819901893,
+  "sourceEvents": 1602946,
+  "period": {
+    "from": "2026-10-16",
+    "to": "2026-11-14",
+    "asOf": "2026-11-15T12:00:00Z"
+  },
+  "baselineCommit": "774c412",
+  "historicalPreparationHeapLimitMiB": 256,
+  "shippingSmoke": {
+    "ms": 136.806709,
+    "peakRssMiB": 132.640625,
+    "rssMiB": 132.640625,
+    "replyBytes": 21302,
+    "equal": true,
+    "displayCacheCreated": false
+  },
+  "verification": {
+    "fullSuite": {
+      "passed": 782,
+      "failed": 0
+    },
+    "postReviewFocusedIncludingCompactionArchiveStoreAndStorage": {
+      "passed": 58,
+      "failed": 0
+    },
+    "build": "passed",
+    "independentReview": "no remaining actionable findings"
+  },
+  "postLateProofs": {
+    "events": {
+      "count": 1602948,
+      "sha256": "7acbbfe3360a29b7d88b225b6fe158498e77423c289ce82cd7f7e13c29006ff8"
+    },
+    "at_event_blocks": {
+      "count": 710,
+      "sha256": "3ae61204ffb19138716dd0a4181bfb7eaea34875e1642cd51d32eb9e25cf4d9c"
+    },
+    "human_decisions": {
+      "count": 1874,
+      "sha256": "07f1793e818cd72b387f3a97ed036099acaa0e481ccbcf8bba6d97aa7436c263"
+    },
+    "human_splits": {
+      "count": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}
