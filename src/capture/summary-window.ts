@@ -92,3 +92,10 @@ export function localDate(seconds:number):string{
 export function addDays(date:string,days:number):string{
  const d=new Date(`${date}T00:00:00`);d.setDate(d.getDate()+days);return localDate(d.getTime()/1000);
 }
+
+export function resetsActivity(event:CaptureEvent):boolean{
+ if(['sleep','capture_stop','capture_start'].includes(event.kind))return true;
+ if(event.kind!=='capture_settings')return false;
+ const previous=event.data?.previous as Record<string,unknown>|undefined,next=event.data?.surfaces as Record<string,unknown>|undefined;
+ return previous?.macosActivity!==next?.macosActivity;
+}

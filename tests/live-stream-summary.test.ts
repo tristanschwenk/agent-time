@@ -59,3 +59,19 @@ test('settings changes, bounded evidence admission and original terminal inserti
  const seeded=createLiveSummary([...events,...terminals],summarize([...events,...terminals],options),options);assert.ok(seeded);
  assert.deepEqual(seeded.evidence,terminals);
 });
+
+test('existing capture fences and worker history admit safe hook reuse with the exact human anchor reset',()=>{
+ for(const fence of [
+  {...sample(4),source:'capture',kind:'capture_start'},
+  {...sample(4),source:'macos',kind:'sleep'},
+  {...sample(4),source:'capture',kind:'capture_settings',data:{previous:{macosActivity:true},surfaces:{macosActivity:false}}},
+  {...sample(4),source:'capture',kind:'capture_settings',data:{surfaces:{macosActivity:false}}},
+  {...sample(4),source:'capture',kind:'capture_settings',data:{previous:{macosActivity:true},surfaces:{macosActivity:true}}},
+ ]){
+  const worker={...sample(5),source:'orca',kind:'worker',hostId:'one',provider:'claude',dispatchId:'dispatch',terminalHandle:'terminal',data:{state:'working',fresh:true}};
+  const events:CaptureEvent[]=[sample(1),sample(3),fence,worker],state=createLiveSummary(events,summarize(events,options),options);assert.ok(state,'normal startup history must not permanently disable the stream cache');
+  const fresh=[{...hook(6,'tool_start'),terminalHandle:'terminal'},sample(7),{...hook(8,'tool_end'),terminalHandle:'terminal'}];
+  const next=appendLiveSummary(state,fresh,options);assert.ok(next);assert.deepEqual(next.summary,summarize([...events,...fresh],options));
+  assert.equal(appendLiveSummary(next.state,[{...worker,eventId:'worker-new',observedAt:9,monotonicAt:9}],options),null,'new worker binding evidence still uses full replay');
+ }
+});

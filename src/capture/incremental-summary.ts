@@ -1,7 +1,7 @@
 import type {CaptureEvent,Summary,Interval} from './events.ts';
 import {minuteCreditSeconds,summarize} from './correlate.ts';
 import {estimatedBytes} from './storage-policy.ts';
-import {isActivitySample} from './summary-window.ts';
+import {isActivitySample,resetsActivity} from './summary-window.ts';
 
 // Minimal fallback when no live stream was admitted: activity samples alone
 // can append without changing session identity, capture fences, or agent credit.
@@ -28,17 +28,18 @@ export interface LiveSummaryState {
  maxObservedAt:number;epochs:Record<string,number>;options:LiveOptions;budgetBytes:number;
 }
 const liveEvidenceLimit=4096,liveEpochLimit=128,liveBudget=4*1024*1024;
-function extendLive(state:LiveSummaryState,events:CaptureEvent[]):LiveSummaryState|null {
+function extendLive(state:LiveSummaryState,events:CaptureEvent[],initial=false):LiveSummaryState|null {
  const next={...state,evidence:state.evidence.slice(),epochs:{...state.epochs}};
  for(const event of events){
-  // No capture fences or worker lookahead is admitted. Equal wall times and
+  // Newly arriving fences/workers require a full replay. Historical ones stay
+  // in the replayed agent evidence. Equal wall times and
   // monotonic ties also fall back rather than reconstructing causal tie order.
   if(!Number.isFinite(event.observedAt)||!Number.isFinite(event.monotonicAt)||event.observedAt<=next.maxObservedAt||
    Object.hasOwn(next.epochs,event.collectorEpoch)&&event.monotonicAt<=next.epochs[event.collectorEpoch]!||
-   ['worker','sleep','capture_start','capture_stop','capture_settings'].includes(event.kind)||event.kind==='activity'&&!isActivitySample(event))return null;
+   !initial&&['worker','sleep','capture_start','capture_stop','capture_settings'].includes(event.kind)||event.kind==='activity'&&!isActivitySample(event))return null;
   next.maxObservedAt=event.observedAt;
   Object.defineProperty(next.epochs,event.collectorEpoch,{value:event.monotonicAt,writable:true,configurable:true,enumerable:true});
-  if(isActivitySample(event))next.lastActivity=event;else next.evidence.push(event);
+  if(isActivitySample(event))next.lastActivity=event;else{next.evidence.push(event);if(resetsActivity(event))next.lastActivity=undefined;}
  }
  if(next.evidence.length>liveEvidenceLimit||Object.keys(next.epochs).length>liveEpochLimit||
   estimatedBytes({evidence:next.evidence,lastActivity:next.lastActivity,epochs:next.epochs},next.budgetBytes)>next.budgetBytes)return null;
@@ -47,7 +48,7 @@ function extendLive(state:LiveSummaryState,events:CaptureEvent[]):LiveSummarySta
 /** Inputs are SQLite-unique evidence and its corresponding raw reducer output. */
 export function createLiveSummary(events:CaptureEvent[],summary:Summary,options:LiveOptions,budgetBytes=liveBudget):LiveSummaryState|null {
  const ordered=events.slice().sort((a,b)=>a.observedAt-b.observedAt);
- const state=extendLive({evidence:[],human:[],maxObservedAt:-Infinity,epochs:{},options:{...options},budgetBytes:Math.min(budgetBytes,liveBudget)},ordered);
+ const state=extendLive({evidence:[],human:[],maxObservedAt:-Infinity,epochs:{},options:{...options},budgetBytes:Math.min(budgetBytes,liveBudget)},ordered,true);
  if(!state)return null;
  state.evidence=events.filter(event=>!isActivitySample(event));
  state.human=summary.intervals.filter(interval=>interval.state==='human');

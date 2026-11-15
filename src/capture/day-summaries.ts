@@ -4,7 +4,7 @@ import type {EventStore} from './store.ts';
 import type {CaptureEvent,Summary} from './events.ts';
 import {summarize} from './correlate.ts';
 import {appendActivitySummary,appendLiveSummary,createLiveSummary,type LiveSummaryState} from './incremental-summary.ts';
-import {inWindow,isActivitySample,localDayBounds,type WindowBounds,windowBounds} from './summary-window.ts';
+import {inWindow,isActivitySample,resetsActivity,localDayBounds,type WindowBounds,windowBounds} from './summary-window.ts';
 
 export interface SummaryOptions {idleThreshold:number;agentIdleThreshold:number;}
 export interface DayWindow {
@@ -114,12 +114,7 @@ export class DaySummaries {
   return entry;
  }
 }
-export function resetsActivity(event:CaptureEvent):boolean{
- if(['sleep','capture_stop','capture_start'].includes(event.kind))return true;
- if(event.kind!=='capture_settings')return false;
- const previous=event.data?.previous as Record<string,unknown>|undefined,next=event.data?.surfaces as Record<string,unknown>|undefined;
- return Boolean(previous&&next&&previous.macosActivity!==next.macosActivity);
-}
+export {resetsActivity} from './summary-window.ts';
 /** Orca terminal titles and paths name agent sessions; the newest observation wins. */
 export function applyTerminalTitles(summary:Summary,events:CaptureEvent[],lookup?:(handles:string[])=>CaptureEvent[]):void{
  const terminals=new Map<string|undefined,CaptureEvent>();
