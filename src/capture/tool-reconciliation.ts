@@ -15,7 +15,7 @@ export class ToolReconciliation {
   // Upgrade only this reconstructible index; proofs and review records stay intact.
   if(db.prepare('PRAGMA table_info(tool_boundaries)').all().some(row=>row.name==='identity')){
    db.exec('BEGIN IMMEDIATE');try{db.exec('DROP TABLE tool_boundaries;DROP TABLE tool_executions');
-    if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='ingestion_state'").get())db.exec('UPDATE ingestion_state SET rowid_cursor=0;UPDATE credited_slices SET dirty=1');db.exec('COMMIT');
+    if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='ingestion_state'").get())db.exec(`UPDATE ingestion_state SET rowid_cursor=0${db.prepare('PRAGMA table_info(ingestion_state)').all().some(row=>row.name==='started')?',started=0':''};UPDATE credited_slices SET dirty=1`);db.exec('COMMIT');
    }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
   }
   db.exec(`CREATE TABLE IF NOT EXISTS tool_index_state(id INTEGER PRIMARY KEY CHECK(id=1),disabled INTEGER NOT NULL);INSERT OR IGNORE INTO tool_index_state VALUES(1,0);CREATE TABLE IF NOT EXISTS tool_executions(id INTEGER PRIMARY KEY,identity TEXT NOT NULL UNIQUE,status TEXT NOT NULL);

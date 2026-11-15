@@ -46,3 +46,22 @@ test('historical preparation counts use closed periods of active projects and ex
  model.sync(store.database);for(const date of ['2026-10-20','2026-10-21','2026-10-22'])model.put(store.database,'p',date,'config',prepared(date));model.put(store.database,'deleted-project','2026-10-20','config',prepared());model.database.prepare("UPDATE credited_slices SET dirty=1 WHERE project='p' AND date='2026-10-20'").run();
  assert.deepEqual(model.historyStats(Date.parse('2026-10-22T12:00:00Z')/1000,['p']),{projects:1,total:2,prepared:1,pending:1});assert.deepEqual(model.historyStats(Date.parse('2026-10-22T12:00:00Z')/1000,[]),{projects:0,total:0,prepared:0,pending:0});
  }finally{model.close();store.close();rmSync(root,{recursive:true,force:true});}});
+
+test('journal replay discovers relocated and reused-rowid history dates',()=>{const{root,store,model}=fixture();try{
+ const at=(date:string)=>Date.parse(date+'T12:00Z')/1000,first=makeEvent('hook','tool_start',{eventId:'move',provider:'claude',hostId:'local',sessionId:'s',observedAt:at('2026-01-01'),data:{toolId:'t'}});store.put(first);model.sync(store.database);
+ const relocated={...first,observedAt:at('2026-10-01')};store.database.prepare('UPDATE events SET observed_at=?,payload_data=? WHERE event_id=?').run(relocated.observedAt,JSON.stringify(relocated),first.eventId);assert(model.sync(store.database).caughtUp);assert(model.buckets().includes(Math.floor(relocated.observedAt/86400)));
+ store.database.prepare('DELETE FROM events').run();store.put({...first,eventId:'reused',observedAt:at('2026-11-01')});assert(model.sync(store.database).caughtUp);assert(model.buckets().includes(Math.floor(at('2026-11-01')/86400)));
+ }finally{model.close();store.close();rmSync(root,{recursive:true,force:true});}});
+test('initial and rebuilt ingestion includes negative and zero rowids without changing source order',()=>{const{root,store,model}=fixture();try{
+ for(const[rowid,date]of[[-2,'2026-01-01'],[0,'2026-02-01'],[1,'2026-03-01']]as const){const e=makeEvent('hook','tool_start',{eventId:'id'+rowid,provider:'claude',hostId:'local',sessionId:'s'+rowid,observedAt:Date.parse(date+'T12:00Z')/1000,data:{toolId:'t'}});store.database.prepare('INSERT INTO events(rowid,event_id,observed_at,payload_data) VALUES(?,?,?,?)').run(rowid,e.eventId,e.observedAt,JSON.stringify(e));}
+ const proof=store.events();while(!model.sync(store.database,1).caughtUp){}assert.equal(model.stats().tools,3);assert.equal(model.buckets().length,3);model.discard();while(!model.sync(store.database,1).caughtUp){}assert.equal(model.stats().tools,3);assert.deepEqual(store.events(),proof);
+ }finally{model.close();store.close();rmSync(root,{recursive:true,force:true});}});
+
+test('v2 ingestion models rebuild safely to discover zero-rowid evidence',()=>{
+ const root=mkdtempSync(join(tmpdir(),'at-ingestion-v2-')),store=new EventStore(join(root,'events.sqlite'));let model=new IngestionModel(root);try{
+ const e=makeEvent('hook','tool_start',{eventId:'zero',provider:'claude',hostId:'local',sessionId:'s',observedAt:100,data:{toolId:'t'}});store.database.prepare('INSERT INTO events(rowid,event_id,observed_at,payload_data) VALUES(0,?,?,?)').run(e.eventId,e.observedAt,JSON.stringify(e));model.sync(store.database);model.database.exec('ALTER TABLE ingestion_state DROP COLUMN started;PRAGMA user_version=2');model.close();model=new IngestionModel(root);assert(model.sync(store.database).caughtUp);assert.equal(model.stats().tools,1);assert.deepEqual(store.events().map(e=>e.eventId),['zero']);
+ }finally{model.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+test('all-negative histories and their deletion can reach a caught-up empty source',()=>{const{root,store,model}=fixture();try{
+ const e=makeEvent('hook','tool_start',{eventId:'negative',provider:'claude',hostId:'local',sessionId:'s',observedAt:100,data:{toolId:'t'}});store.database.prepare('INSERT INTO events(rowid,event_id,observed_at,payload_data) VALUES(-2,?,?,?)').run(e.eventId,e.observedAt,JSON.stringify(e));assert(model.sync(store.database).caughtUp);assert.equal(model.stats().tools,1);store.database.exec('DELETE FROM events');assert(model.sync(store.database).caughtUp);assert.equal(model.stats().tools,0);
+ }finally{model.close();store.close();rmSync(root,{recursive:true,force:true});}});

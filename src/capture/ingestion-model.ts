@@ -4,7 +4,7 @@ import type{BillingDayInput,BillingSpan}from'./billing-types.ts';import type{Cap
 export function ingestionStorageLimit(root:string){try{const n=Number(JSON.parse(readFileSync(join(root,'settings.json'),'utf8')).storageLimitMB);if(Number.isFinite(n)&&n>0)return n;}catch{}return DEFAULT_STORAGE_LIMIT_MB;}
 export interface PreparedCreditedInput{value:BillingDayInput;paths:ProjectPathDependency[]|undefined;sessions:string[][];tasks:string[];urls?:string[];asOf:number;validUntil:number;dayEnd?:number;agentIdleThreshold?:number;}
 const pack=(v:unknown)=>deflateRawSync(serialize(v),{level:1}),unpack=(v:unknown)=>deserialize(inflateRawSync(v as Uint8Array,{maxOutputLength:32*1024*1024}));
-interface Point{identity:string;rowid:number;sequence:number;}
+interface Point{identity:string;rowid:number;sequence:number;initial?:true;}
 function sourcePoint(db:DatabaseSync):Point{
  const identity=db.prepare('SELECT identity FROM at_dependency_revision WHERE id=1').get()?.identity;if(!identity)throw Error('Source tracking unavailable');
  const file=String(db.prepare('PRAGMA database_list').all().find(row=>row.name==='main')?.file||'');const inode=file?statSync(file):undefined;
@@ -22,8 +22,8 @@ export class IngestionModel{
  constructor(root:string,create=true,limitMB=ingestionStorageLimit(root),admission?:(bytes:number)=>boolean){
   this.root=root;this.limitMB=limitMB;this.admission=admission;const path=join(root,'ingestion.sqlite');if(!create&&!existsSync(path))throw Error('Ingestion model absent');
   if(create){mkdirSync(root,{recursive:true,mode:0o700});if(!existsSync(path)&&!this.canWrite(65536))throw Error('Ingestion preparation paused for storage capacity');}
-  const db=this.database=new DatabaseSync(path);try{const version=Number(db.prepare('PRAGMA user_version').get()?.user_version);if(version>2)throw Error('Newer ingestion model');chmodSync(path,0o600);db.exec(`PRAGMA busy_timeout=200; PRAGMA cache_size=-2048; PRAGMA mmap_size=0; PRAGMA auto_vacuum=INCREMENTAL; PRAGMA max_page_count=65536;
-   CREATE TABLE IF NOT EXISTS ingestion_state(id INTEGER PRIMARY KEY,identity TEXT NOT NULL,rowid_cursor INTEGER NOT NULL,change_cursor INTEGER NOT NULL);
+  const db=this.database=new DatabaseSync(path);try{const version=Number(db.prepare('PRAGMA user_version').get()?.user_version);if(version>3)throw Error('Newer ingestion model');chmodSync(path,0o600);db.exec(`PRAGMA busy_timeout=200; PRAGMA cache_size=-2048; PRAGMA mmap_size=0; PRAGMA auto_vacuum=INCREMENTAL; PRAGMA max_page_count=65536;
+   CREATE TABLE IF NOT EXISTS ingestion_state(id INTEGER PRIMARY KEY,identity TEXT NOT NULL,rowid_cursor INTEGER NOT NULL,change_cursor INTEGER NOT NULL,started INTEGER NOT NULL DEFAULT 0);
    CREATE TABLE IF NOT EXISTS ingestion_days(bucket INTEGER PRIMARY KEY);
    CREATE TABLE IF NOT EXISTS credited_slices(key TEXT PRIMARY KEY,project TEXT NOT NULL,date TEXT NOT NULL,config TEXT NOT NULL,start REAL NOT NULL,day_end REAL NOT NULL,read_from REAL NOT NULL,read_to REAL NOT NULL,activity_from REAL NOT NULL,activity_to REAL NOT NULL,dirty INTEGER NOT NULL,as_of REAL NOT NULL,valid_until REAL NOT NULL,meta BLOB,contexts BLOB,paths BLOB,digest TEXT);
    CREATE TABLE IF NOT EXISTS credited_periods(slice TEXT NOT NULL,ordinal INTEGER NOT NULL,start REAL NOT NULL,end REAL NOT NULL,context INTEGER NOT NULL,PRIMARY KEY(slice,ordinal)) WITHOUT ROWID;
@@ -33,12 +33,14 @@ export class IngestionModel{
    CREATE INDEX IF NOT EXISTS credited_urls_identity ON credited_urls(url);
    CREATE INDEX IF NOT EXISTS credited_sessions_identity ON credited_sessions(provider,session);
    CREATE INDEX IF NOT EXISTS credited_tasks_identity ON credited_tasks(task);
-   CREATE INDEX IF NOT EXISTS credited_dirty ON credited_slices(dirty,date); PRAGMA user_version=2;`);this.tools=new ToolReconciliation(db);
+   CREATE INDEX IF NOT EXISTS credited_dirty ON credited_slices(dirty,date);`);this.tools=new ToolReconciliation(db);
+   if(!db.prepare('PRAGMA table_info(ingestion_state)').all().some(row=>row.name==='started')){db.exec('BEGIN IMMEDIATE');try{db.exec('ALTER TABLE ingestion_state ADD COLUMN started INTEGER NOT NULL DEFAULT 0;UPDATE credited_slices SET dirty=1');this.tools.reset();db.exec('COMMIT');}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}
+   db.exec('PRAGMA user_version=3');
   }catch(error){db.close();throw error;}
  }
  private canWrite(bytes:number){if(this.admission&&!this.admission(bytes))return false;let file=0;try{file=statSync(join(this.root,'ingestion.sqlite')).size;}catch{}bytes=bytes*2+file;const usage=quickStorageUsage(this.root);return !usage.truncated&&(usage.freeBytes===null||usage.freeBytes-bytes>=1024**3)&&usage.managedBytes+bytes<this.limitMB*1024*1024*.9;}
- private state():Point|undefined{const row=this.database.prepare('SELECT * FROM ingestion_state WHERE id=1').get();return row?{identity:String(row.identity),rowid:Number(row.rowid_cursor),sequence:Number(row.change_cursor)}:undefined;}
- private save(point:Point){this.database.prepare('INSERT INTO ingestion_state VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET identity=excluded.identity,rowid_cursor=excluded.rowid_cursor,change_cursor=excluded.change_cursor').run(point.identity,point.rowid,point.sequence);}
+ private state():Point|undefined{const row=this.database.prepare('SELECT * FROM ingestion_state WHERE id=1').get();return row?{identity:String(row.identity),rowid:Number(row.rowid_cursor),sequence:Number(row.change_cursor),...(row.started===0?{initial:true as const}:{})}:undefined;}
+ private save(point:Point){this.database.prepare('INSERT INTO ingestion_state VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET identity=excluded.identity,rowid_cursor=excluded.rowid_cursor,change_cursor=excluded.change_cursor,started=excluded.started').run(point.identity,point.rowid,point.sequence,point.initial?0:1);}
  private mark(meta:IngestMeta){
   const{indexedAt,...logical}=meta;if(indexedAt!==undefined&&indexedAt!==meta.observedAt)this.mark({...logical,observedAt:indexedAt});
   const db=this.database,at=meta.observedAt;if(!Number.isFinite(at))return;
@@ -53,31 +55,33 @@ export class IngestionModel{
  sync(source:DatabaseSync,limit=4096,allowReset=true){const own=!source.isTransaction;if(own)source.exec('BEGIN');try{return this.syncPinned(source,limit,allowReset);}finally{if(own&&source.isTransaction)source.exec('ROLLBACK');}}
  private syncPinned(source:DatabaseSync,limit:number,allowReset:boolean){
   const target=sourcePoint(source),db=this.database,journal=ingestionJournalState(source);let state=this.state();let scanned=0;
-  if(state?.identity===target.identity&&(state.sequence>target.sequence||state.rowid>target.rowid&&state.sequence===target.sequence))return{caughtUp:false,scanned,cursor:state.rowid,future:true};
+  if(state?.identity===target.identity&&(state.sequence>target.sequence||!state.initial&&state.rowid>target.rowid&&state.sequence===target.sequence))return{caughtUp:false,scanned,cursor:state.rowid,future:true};
   if(!allowReset&&(!state||state.identity!==target.identity))return{caughtUp:false,scanned,cursor:state?.rowid??0,future:true};
   if(state&&JSON.stringify(state)===JSON.stringify(target))return{caughtUp:true,scanned,cursor:state.rowid};
   if(!this.canWrite(256*1024))return{caughtUp:false,scanned,cursor:state?.rowid??0,capacity:true};
   db.exec('BEGIN IMMEDIATE');try{
-   state=this.state();if(state?.identity===target.identity&&(state.sequence>target.sequence||state.rowid>target.rowid&&state.sequence===target.sequence)){db.exec('ROLLBACK');return{caughtUp:false,scanned,cursor:state.rowid,future:true};}
-   if(!state||state.identity!==target.identity){db.exec('DELETE FROM credited_periods;DELETE FROM credited_slices;DELETE FROM credited_sessions;DELETE FROM credited_tasks;DELETE FROM credited_urls;DELETE FROM ingestion_days');this.tools.reset();state={identity:target.identity,rowid:0,sequence:journal.sequence};}
-   if(state.sequence<journal.firstSequence-1){db.exec('UPDATE credited_slices SET dirty=1');this.tools.reset();state.rowid=0;state.sequence=journal.sequence;}
-   const changes=readIngestionChanges(source,state.sequence,limit),read=source.prepare('SELECT rowid,payload FROM events WHERE event_id=?');
+   state=this.state();if(state?.identity===target.identity&&(state.sequence>target.sequence||!state.initial&&state.rowid>target.rowid&&state.sequence===target.sequence)){db.exec('ROLLBACK');return{caughtUp:false,scanned,cursor:state.rowid,future:true};}
+   if(!state||state.identity!==target.identity){db.exec('DELETE FROM credited_periods;DELETE FROM credited_slices;DELETE FROM credited_sessions;DELETE FROM credited_tasks;DELETE FROM credited_urls;DELETE FROM ingestion_days');this.tools.reset();state={identity:target.identity,rowid:0,sequence:journal.sequence,initial:true};}
+   if(state.sequence<journal.firstSequence-1){db.exec('UPDATE credited_slices SET dirty=1');this.tools.reset();state.rowid=0;state.initial=true;state.sequence=journal.sequence;}
+   const buckets=new Set<number>(),discover=(...times:number[])=>{for(const at of times)if(Number.isFinite(at))buckets.add(Math.floor(at/86400));};
+   const changes=readIngestionChanges(source,state.sequence,limit),read=source.prepare('SELECT rowid,observed_at,payload FROM events WHERE event_id=?');
    for(const change of changes){
-    if(change.kind==='blocks'){db.exec('UPDATE credited_slices SET dirty=1');this.tools.reset();state.rowid=0;}
+    if(change.kind==='blocks'){db.exec('UPDATE credited_slices SET dirty=1');this.tools.reset();state.rowid=0;state.initial=true;}
     else if(change.kind==='review')for(const pair of change.pairs||[]){const times=pair.flatMap(id=>{const row=source.prepare('SELECT observed_at FROM events WHERE event_id=?').get(id);return row?[Number(row.observed_at)]:[];});if(times.length)db.prepare('UPDATE credited_slices SET dirty=1 WHERE activity_from<=? AND activity_to>?').run(Math.max(...times),Math.min(...times));else db.exec('UPDATE credited_slices SET dirty=1');}
     else{
      const ids=new Set<string>();for(const meta of [change.old,change.next])if(meta){this.mark(meta);this.tools.remove(meta.eventId);ids.add(meta.eventId);}
-     for(const id of ids){const row=read.get(id);if(row){const event=JSON.parse(String(row.payload)) as CaptureEvent;this.tools.ingest([{rowid:Number(row.rowid),event}]);this.mark(ingestionMeta(event));}}
+     for(const id of ids){const row=read.get(id);if(row){const event=JSON.parse(String(row.payload)) as CaptureEvent;this.tools.ingest([{rowid:Number(row.rowid),event}]);this.mark(ingestionMeta(event));discover(event.observedAt,Number(row.observed_at));}}
     }
     state.sequence=change.sequence;
    }
-   state.rowid=Math.min(state.rowid,target.rowid);
+   if(!state.initial)state.rowid=Math.min(state.rowid,target.rowid);
    const packed=Number(source.prepare('PRAGMA user_version').get()?.user_version)===2,src=packed?'source':"json_extract(payload,'$.source')",sample=packed?'activity_sample':"(json_extract(payload,'$.source')='macos' AND json_extract(payload,'$.kind')='activity')";
-   const rows=source.prepare(`SELECT rowid,event_id,observed_at,${src} source,${sample} sample,CASE WHEN ${src} IN('hook','agent_report') THEN payload ELSE NULL END payload FROM events WHERE rowid>? AND rowid<=? ORDER BY rowid LIMIT ?`).all(state.rowid,target.rowid,limit);
-   const boundaries:Array<{rowid:number;event:CaptureEvent}>=[],buckets=new Set<number>(),hasSlices=Boolean(db.prepare('SELECT 1 FROM credited_slices LIMIT 1').get());
+   const rows=source.prepare(`SELECT rowid,event_id,observed_at,${src} source,${sample} sample,CASE WHEN ${src} IN('hook','agent_report') THEN payload ELSE NULL END payload FROM events WHERE ${state.initial?'':'rowid>? AND '}rowid<=? ORDER BY rowid LIMIT ?`).all(...(state.initial?[target.rowid,limit]:[state.rowid,target.rowid,limit]));
+   const boundaries:Array<{rowid:number;event:CaptureEvent}>=[],hasSlices=Boolean(db.prepare('SELECT 1 FROM credited_slices LIMIT 1').get());
    for(const row of rows){const event=row.payload?JSON.parse(String(row.payload)) as CaptureEvent:undefined;const meta=event?ingestionMeta(event):{eventId:String(row.event_id),source:String(row.source),kind:row.sample?'activity':'',observedAt:Number(row.observed_at)};
-    if(hasSlices){this.mark(meta);if(meta.observedAt!==Number(row.observed_at))this.mark({...meta,observedAt:Number(row.observed_at)});}if(event?.source==='hook')boundaries.push({rowid:Number(row.rowid),event});buckets.add(Math.floor(meta.observedAt/86400));state.rowid=Number(row.rowid);scanned++;
+    if(hasSlices){this.mark(meta);if(meta.observedAt!==Number(row.observed_at))this.mark({...meta,observedAt:Number(row.observed_at)});}if(event?.source==='hook')boundaries.push({rowid:Number(row.rowid),event});discover(meta.observedAt,Number(row.observed_at));state.rowid=Number(row.rowid);scanned++;
    }
+   delete state.initial;if(rows.length<limit)state.rowid=target.rowid;
    this.tools.ingest(boundaries);for(const bucket of buckets)db.prepare('INSERT OR IGNORE INTO ingestion_days VALUES(?)').run(bucket);
    this.save(state);db.exec('COMMIT');return{caughtUp:state.rowid===target.rowid&&state.sequence===target.sequence,scanned,cursor:state.rowid};
   }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
