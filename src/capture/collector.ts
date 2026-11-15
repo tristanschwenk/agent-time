@@ -813,14 +813,14 @@ export class Collector {
     const now=Date.now()/1000;
     const revision=this.store.revision();
     if(this.reportEvidenceStamp?.revision!==revision)this.reportEvidenceStamp={revision,value:this.store.reportedEvidenceRevision()};
-    const stamp=this.reportEvidenceStamp.value,upper=Math.max(end,now)+60;
-    let entry=this.reportEvidence.get(date)??(now>=end?this.projection.getView<{revision:string;events:CaptureEvent[];ends:Map<string,number>;upper:number;expires:number;bytes:number}>('counter-evidence',date,stamp):undefined);
-    if(!entry||entry.revision!==stamp||upper<entry.upper||now>=entry.expires){
+    const stamp=this.reportEvidenceStamp.value,upper=Math.max(end,now)+60,evidenceKey=JSON.stringify([1,stamp,start,end]);
+    let entry=this.reportEvidence.get(date)??(now>=end?this.projection.getView<{revision:string;events:CaptureEvent[];ends:Map<string,number>;upper:number;expires:number;bytes:number}>('counter-evidence',date,evidenceKey):undefined);
+    if(!entry||entry.revision!==evidenceKey||upper<entry.upper||now>=entry.expires){
       const events=this.store.taskReportEvidence(start-86400,end+43200),hasCounters=events.some(event=>event.kind==='task_start');
       const ends=hasCounters?this.store.sessionEnds(start-86400,upper):new Map<string,number>();
       const expires=hasCounters?this.store.nextSessionEndAt(upper)-60:Infinity;
-      entry={revision:stamp,events,ends,upper,expires,bytes:estimatedBytes({events,ends:[...ends]})};
-      if(now>=end&&entry.bytes<=8*1024*1024)this.projection.putView('counter-evidence',date,stamp,entry);
+      entry={revision:evidenceKey,events,ends,upper,expires,bytes:estimatedBytes({events,ends:[...ends]})};
+      if(now>=end&&entry.bytes<=8*1024*1024)this.projection.putView('counter-evidence',date,evidenceKey,entry);
       this.reportEvidence.delete(date);
       if(entry.bytes<=8*1024*1024){
         this.reportEvidence.set(date,entry);

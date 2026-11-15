@@ -48,3 +48,15 @@ test('closed-day counter evidence survives restart without rereading payloads an
   c.store.put(makeEvent('agent_report','task_stop',{observedAt:at+20,provider:'claude',sessionId:'session',data:{taskCounterId:'counter'}}));assert.notDeepEqual(c.reportedWork(date),first);assert.equal(reads,1);
  }finally{await c.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('counter evidence keys include local day bounds across timezone changes and restart',async()=>{
+ const previousTZ=process.env.TZ,dir=mkdtempSync(join(tmpdir(),'at-counter-timezone-'));process.env.TZ='UTC';let c=new Collector(dir);
+ try{
+  c.store.put(makeEvent('agent_report','task_start',{eventId:'counter',observedAt:Date.parse('2026-10-20T12:00:00Z')/1000,provider:'claude',sessionId:'session',data:{title:'Task'}}));
+  c.store.put(makeEvent('agent_report','task_stop',{observedAt:Date.parse('2026-10-21T14:00:00Z')/1000,provider:'claude',sessionId:'session',data:{taskCounterId:'counter'}}));
+  c.reportedWork('2026-10-20');await c.close();process.env.TZ='America/New_York';c=new Collector(dir);
+  const cached=c.reportedWork('2026-10-20');(c as any).reportEvidence.clear();(c as any).projection.getView=()=>undefined;
+  assert.deepEqual(cached,c.reportedWork('2026-10-20'));
+  process.env.TZ='UTC';const runtime=c.reportedWork('2026-10-20');(c as any).reportEvidence.clear();assert.deepEqual(runtime,c.reportedWork('2026-10-20'));
+ }finally{await c.close();if(previousTZ===undefined)delete process.env.TZ;else process.env.TZ=previousTZ;rmSync(dir,{recursive:true,force:true});}
+});

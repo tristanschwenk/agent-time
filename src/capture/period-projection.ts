@@ -28,6 +28,15 @@ export class PeriodProjection{
    this.db=db;return db;
   }catch(error){db.close();throw error;}
  }
+ /** Raw reducer graphs are the most expensive cache entries. Drop those first,
+  * keeping independently validated final views useful across a 30-day report. */
+ private evict(db:DatabaseSync):boolean{
+  const raw=db.prepare('SELECT date FROM days ORDER BY rowid LIMIT 1').get();
+  if(raw){db.prepare('DELETE FROM periods WHERE day=?').run(String(raw.date));db.prepare('DELETE FROM days WHERE date=?').run(String(raw.date));return true;}
+  const home=db.prepare('SELECT date FROM home_views ORDER BY rowid LIMIT 1').get();
+  if(home){db.prepare('DELETE FROM home_views WHERE date=?').run(String(home.date));return true;}
+  return Number(db.prepare('DELETE FROM views WHERE rowid=(SELECT rowid FROM views ORDER BY rowid LIMIT 1)').run().changes)>0;
+ }
  get retainedBytes(){try{return Number(this.open().prepare('SELECT (SELECT coalesce(sum(bytes),0) FROM days)+(SELECT coalesce(sum(bytes),0) FROM home_views)+(SELECT coalesce(sum(bytes),0) FROM views) n').get()?.n);}catch{return 0;}}
  get(date:string,signature:string):Summary|undefined{
   try{
@@ -53,7 +62,7 @@ export class PeriodProjection{
    const digest=createHash('sha256').update(header).update(proofData);for(const r of rows)digest.update(JSON.stringify([r.start,r.end,r.state,r.context]));
    db.exec('BEGIN IMMEDIATE');
    db.prepare('DELETE FROM periods WHERE day=?').run(date);db.prepare('DELETE FROM days WHERE date=?').run(date);
-   while(Number(db.prepare('SELECT (SELECT coalesce(sum(bytes),0) FROM days)+(SELECT coalesce(sum(bytes),0) FROM home_views)+(SELECT coalesce(sum(bytes),0) FROM views) n').get()?.n)+bytes>this.budget||Number(db.prepare('SELECT count(*) n FROM days').get()?.n)>=32){const oldest=db.prepare('SELECT date FROM days ORDER BY rowid LIMIT 1').get()||db.prepare('SELECT date FROM home_views ORDER BY rowid LIMIT 1').get()||db.prepare('SELECT date FROM views ORDER BY rowid LIMIT 1').get();if(!oldest)break;db.prepare('DELETE FROM periods WHERE day=?').run(String(oldest.date));db.prepare('DELETE FROM days WHERE date=?').run(String(oldest.date));db.prepare('DELETE FROM home_views WHERE date=?').run(String(oldest.date));db.prepare('DELETE FROM views WHERE date=?').run(String(oldest.date));}
+   while(this.retainedBytes+bytes>this.budget||Number(db.prepare('SELECT count(*) n FROM days').get()?.n)>=32){if(!this.evict(db)){db.exec('ROLLBACK');return;}}
    db.prepare('INSERT INTO days VALUES(?,?,?,?,?,?)').run(date,signature,header,proofData,bytes,digest.digest('hex'));
    const write=db.prepare('INSERT INTO periods VALUES(?,?,?,?,?,?)');rows.forEach((r,n)=>write.run(date,n,r.start,r.end,r.state,r.context));
    db.exec('COMMIT; PRAGMA incremental_vacuum(1024)');
@@ -77,11 +86,7 @@ export class PeriodProjection{
   let db:DatabaseSync|undefined;try{
    const data=pack(value),bytes=data.length+signature.length*2+256;if(bytes>this.budget||!this.canWrite(bytes))return;
    db=this.open();db.exec('BEGIN IMMEDIATE');db.prepare('DELETE FROM home_views WHERE date=?').run(date);
-   // Evict complete oldest days, including their compact view, to share one disk budget.
-   while(Number(db.prepare('SELECT (SELECT coalesce(sum(bytes),0) FROM days)+(SELECT coalesce(sum(bytes),0) FROM home_views)+(SELECT coalesce(sum(bytes),0) FROM views) n').get()?.n)+bytes>this.budget){
-    const oldest=db.prepare('SELECT date FROM days ORDER BY rowid LIMIT 1').get()||db.prepare('SELECT date FROM home_views ORDER BY rowid LIMIT 1').get()||db.prepare('SELECT date FROM views ORDER BY rowid LIMIT 1').get();if(!oldest){db.exec('ROLLBACK');return;}
-    db.prepare('DELETE FROM periods WHERE day=?').run(String(oldest.date));db.prepare('DELETE FROM days WHERE date=?').run(String(oldest.date));db.prepare('DELETE FROM home_views WHERE date=?').run(String(oldest.date));db.prepare('DELETE FROM views WHERE date=?').run(String(oldest.date));
-   }
+   while(this.retainedBytes+bytes>this.budget){if(!this.evict(db)){db.exec('ROLLBACK');return;}}
    // A Home-only view is allowed when the raw period set was too large to retain.
    db.prepare('INSERT INTO home_views VALUES(?,?,?,?,?)').run(date,signature,data,bytes,createHash('sha256').update(data).digest('hex'));
    while(Number(db.prepare('SELECT count(*) n FROM home_views').get()?.n)>32)db.prepare('DELETE FROM home_views WHERE date=(SELECT date FROM home_views ORDER BY rowid LIMIT 1)').run();
@@ -99,13 +104,10 @@ export class PeriodProjection{
    const data=pack(value),bytes=data.length+(namespace.length+date.length+signature.length)*2+256;
    if(bytes>this.budget||!this.canWrite(bytes))return;
    db=this.open();db.exec('BEGIN IMMEDIATE');db.prepare('DELETE FROM views WHERE namespace=? AND date=?').run(namespace,date);
-   while(this.retainedBytes+bytes>this.budget){
-    const oldest=db.prepare('SELECT date FROM days ORDER BY rowid LIMIT 1').get()||db.prepare('SELECT date FROM home_views ORDER BY rowid LIMIT 1').get()||db.prepare('SELECT date FROM views ORDER BY rowid LIMIT 1').get();
-    if(!oldest){db.exec('ROLLBACK');return;}
-    for(const table of ['periods','days','home_views','views'])db.prepare(`DELETE FROM ${table} WHERE ${table==='periods'?'day':'date'}=?`).run(String(oldest.date));
-   }
+   while(this.retainedBytes+bytes>this.budget){if(!this.evict(db)){db.exec('ROLLBACK');return;}}
    db.prepare('INSERT INTO views VALUES(?,?,?,?,?,?)').run(namespace,date,signature,data,bytes,createHash('sha256').update(data).digest('hex'));
-   while(Number(db.prepare('SELECT count(*) n FROM views').get()?.n)>32)db.prepare('DELETE FROM views WHERE rowid=(SELECT rowid FROM views ORDER BY rowid LIMIT 1)').run();
+   while(Number(db.prepare('SELECT count(*) n FROM views WHERE namespace=?').get(namespace)?.n)>32)db.prepare('DELETE FROM views WHERE rowid=(SELECT rowid FROM views WHERE namespace=? ORDER BY rowid LIMIT 1)').run(namespace);
+   while(Number(db.prepare('SELECT count(*) n FROM views').get()?.n)>96)db.prepare('DELETE FROM views WHERE rowid=(SELECT rowid FROM views ORDER BY rowid LIMIT 1)').run();
    db.exec('COMMIT; PRAGMA incremental_vacuum(1024)');
   }catch{if(db?.isTransaction)db.exec('ROLLBACK');}
  }

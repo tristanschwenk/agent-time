@@ -52,3 +52,13 @@ test('legacy evidence without durable revision and nonpersisted reads never crea
  c.versionedHomeResponse(date);const db=new DatabaseSync(join(dir,'derived-periods.sqlite'));const count=()=>db.prepare("SELECT count(*) n FROM views WHERE namespace='billing'").get()!.n;assert.equal(count(),0);snapshot(dir,from,to,{...options,persistedOnly:false});snapshot(dir,from,to,{...options,countTaskCounters:true});assert.equal(count(),0);db.close();
  }finally{await c.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('evicting heavy raw periods preserves lightweight final views for a 30-day report',()=>{
+ const cache=new PeriodProjection(':memory:',65536);
+ try{
+  const raw={intervals:Array.from({length:200},(_,n)=>({start:n,end:n+1,state:'human',proof:'inferred',sourceEventIds:[String(n),String(n+1)]})),sessions:[],unresolved:[],coverage:[],humanSeconds:200,agentSeconds:0,childAgentSeconds:0,elapsedSeconds:200} as Summary;
+  for(let n=0;n<30;n++){cache.put(String(n),'signature',raw);cache.putView('review',String(n),'signature',{n});cache.putView('counter-evidence',String(n),'signature',{events:[],ends:new Map()});}
+  for(let n=0;n<30;n++){assert.deepEqual(cache.getView('review',String(n),'signature'),{n});assert.deepEqual(cache.getView('counter-evidence',String(n),'signature'),{events:[],ends:new Map()});}
+  assert(cache.retainedBytes<=65536);
+ }finally{cache.close();}
+});

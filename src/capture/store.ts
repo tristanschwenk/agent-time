@@ -191,7 +191,7 @@ export class EventStore {
   windowSignature(bounds:WindowBounds):string{
     return `${evidenceWindowRevision(this.db,bounds)}:${this.dependencyRevision('review')}`;
   }
-  dependencyRevision(scope:'resources'|'reports'|'review'):string{return dependencyRevision(this.db,scope);}
+  dependencyRevision(scope:'resources'|'reports'|'review'):string{return `${this.storageIdentity}:${dependencyRevision(this.db,scope)}`;}
   /** Only declarations and session endings age counter evidence. Leases are still evaluated per read. */
   reportedEvidenceRevision():string{return this.dependencyRevision('reports');}
   resourceEvents(start:number,end:number):CaptureEvent[]{
