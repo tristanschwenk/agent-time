@@ -1,4 +1,4 @@
-import {archiveName,withReadableArchive,recordArchive,resolveArchivePath} from './archive-storage.ts';
+import {archiveName,withReadableArchive,recordArchive,resolveArchivePath,lockClosedArchive} from './archive-storage.ts';
 import {checkEventDatabase,openEventDatabase,verifyPackedBlocks,isPackedEventDatabase} from './event-database.ts';
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
@@ -48,8 +48,8 @@ function readPending(root:string):PendingReplacement|null{
 function writePending(root:string,pending:PendingReplacement){
  writeFileSync(marker(root),JSON.stringify(pending),{flag:'wx',mode:0o600});
 }
-function verifyDatabase(path:string){
- regular(path);const db=openEventDatabase(path,{readOnly:true});
+function verifyDatabase(path:string,locked?:DatabaseSync){
+ regular(path);const db=locked??openEventDatabase(path,{readOnly:true});
  try{
   verifyPackedBlocks(db);
   if(!checkEventDatabase(db))throw new Error('Storage integrity check failed');
@@ -60,7 +60,7 @@ function verifyDatabase(path:string){
    if(event.eventId!==row.event_id||event.observedAt!==row.observed_at)throw new Error('Storage event columns do not match their payload');
   }
  }
- finally{db.close();}
+ finally{if(!locked)db.close();}
 }
 function checkpoint(path:string){
  const db=openEventDatabase(path);
@@ -100,11 +100,13 @@ export async function prepareCompactionAsync(root:string,options:{idleThreshold:
 export function prepareRestore(root:string,candidate:string):{candidate:string;backup:string;bytes:number}{
  if(existsSync(marker(root)))throw new Error('A storage replacement is already pending');
  if(!namePattern.test(candidate))throw new Error('Invalid archive name');
- const source=join(root,'events.sqlite'),archive=join(folder(root),candidate);regular(source);verifyDatabase(archive);
+ const source=join(root,'events.sqlite'),archive=join(folder(root),candidate);regular(source);
+ const guard=lockClosedArchive(archive,openEventDatabase);try{verifyDatabase(archive,guard);
  checkpoint(source);
  const backup=named();
  writePending(root,{candidate,backup,sourceHash:hash(source),candidateHash:hash(archive),kind:'restore'});
  return {candidate,backup,bytes:statSync(archive).size};
+ }finally{guard.close();}
 }
 export async function prepareRestoreAsync(root:string,id:string):Promise<{candidate:string;backup:string;bytes:number}>{
  if(!archiveName.test(id))throw new Error('Invalid archive name');
@@ -154,13 +156,13 @@ export function applyPendingReplacement(root:string,checkOpenHandles=noOtherOpen
  checkpoint(source);
  clearClosedJournal(source);
  if(hash(source)===pending.candidateHash&&existsSync(backup)){rmSync(marker(root));writeResult(root,pending,'applied');return 'applied';}
- regular(archive);verifyDatabase(archive);
- checkOpenHandles(archive);
+ regular(archive);checkOpenHandles(archive);
+ const guard=lockClosedArchive(archive,openEventDatabase);try{verifyDatabase(archive,guard);
  if(hash(source)!==pending.sourceHash||hash(archive)!==pending.candidateHash){rmSync(marker(root));writeResult(root,pending,'stale');return 'stale';}
  if(existsSync(backup))throw new Error('Recovery archive already exists');
  renameSync(source,backup);
  try{
-  renameSync(archive,source);chmodSync(source,0o600);verifyDatabase(source);
+  renameSync(archive,source);chmodSync(source,0o600);verifyDatabase(source,guard);
   rmSync(marker(root));writeResult(root,pending,'applied');
   return 'applied';
  }catch(error){
@@ -168,4 +170,5 @@ export function applyPendingReplacement(root:string,checkOpenHandles=noOtherOpen
   if(existsSync(backup))renameSync(backup,source);
   throw error;
  }
+ }finally{guard.close();}
 }

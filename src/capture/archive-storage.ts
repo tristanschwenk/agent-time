@@ -1,3 +1,4 @@
+import {DatabaseSync} from 'node:sqlite';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream,createWriteStream,existsSync,lstatSync,mkdtempSync,mkdirSync,readFileSync,renameSync,linkSync,rmSync,statfsSync,writeFileSync,readdirSync} from 'node:fs';
 import {join,dirname} from 'node:path';
@@ -7,15 +8,31 @@ export const archiveName=/^agent-time-[0-9TZ-]+-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[
 const regular=(path:string)=>{const info=lstatSync(path);if(!info.isFile()||info.isSymbolicLink())throw new Error('Archive must be a regular file');return info;};
 const same=(a:NonNullable<ReturnType<typeof lstatSync>>,b:NonNullable<ReturnType<typeof lstatSync>>)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs;
 async function fileHash(path:string){const hash=createHash('sha256');let bytes=0;for await(const data of createReadStream(path)){hash.update(data);bytes+=data.length;}return {hash:hash.digest('hex'),bytes};}
+/** SQLite's exclusive locking mode excludes compliant readers and writers until release.
+ * Refuse WAL-bearing external copies without opening/checkpointing their evidence. */
+export function lockClosedArchive(path:string,open:(path:string)=>DatabaseSync=path=>new DatabaseSync(path)){
+ const closed=()=>{regular(path);for(const suffix of ['-wal','-journal'])if(existsSync(path+suffix)&&regular(path+suffix).size>0)throw new Error('Archive is not a closed database copy (write-ahead log or journal remains)');};
+ closed();const db=open(path);
+ try{db.exec('PRAGMA busy_timeout=0; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE');closed();return db;}
+ catch(error){db.close();throw error;}
+}
+/** Allocate private output only after recording its live process owner. */
+export function createArchiveStaging(folder:string):{path:string;cleanup:()=>void}{
+ if(lstatSync(folder).isSymbolicLink())throw new Error('Archive folder must not be a symlink');
+ const directory=mkdtempSync(join(folder,'.archive-write-'));
+ try{writeLock(join(directory,'owner.lock'));return {path:join(directory,'archive.tmp'),cleanup:()=>rmSync(directory,{recursive:true,force:true})};}
+ catch(error){rmSync(directory,{recursive:true,force:true});throw error;}
+}
 export async function compressArchive(path:string,maxOutputBytes?:number):Promise<{path:string;bytes:number;sha256:string;originalBytes:number}>{
- const before=regular(path),target=path+'.gz',temp=target+'.'+randomUUID()+'.tmp';
+ const before=regular(path),target=path+'.gz';
  if(maxOutputBytes!==undefined&&(!Number.isSafeInteger(maxOutputBytes)||maxOutputBytes<0))throw new Error('Invalid temporary-space budget');
  const volume=statfsSync(dirname(path)),available=Number(volume.bavail)*Number(volume.bsize)-1024**3,limit=Math.min(available,maxOutputBytes??Infinity);let written=0;
  if(limit<=0)throw new Error('Not enough free space to compress this archive safely');
  if(existsSync(target))throw new Error('Compressed archive already exists');
  if(path.endsWith('.gz')||existsSync(path+'-wal')&&regular(path+'-wal').size>0)throw new Error('Archive is not a closed database copy');
- const hash=createHash('sha256');let bytes=0;
+ const guard=lockClosedArchive(path);let staging:ReturnType<typeof createArchiveStaging>|undefined;
  try{
+  staging=createArchiveStaging(dirname(path));const temp=staging.path,hash=createHash('sha256');let bytes=0;
   await pipeline(createReadStream(path),new Transform({transform(chunk,_encoding,next){hash.update(chunk);bytes+=chunk.length;next(null,chunk);}}),createGzip({level:6}),new Transform({transform(chunk,_encoding,next){written+=chunk.length;next(written>limit?new Error('Archive compression reached its temporary-space budget'):null,chunk);}}),createWriteStream(temp,{flags:'wx',mode:0o600}));
   const originalHash=hash.digest('hex'),verified=createHash('sha256');let restored=0;
   await pipeline(createReadStream(temp),createGunzip(),new Writable({write(chunk,_encoding,next){restored+=chunk.length;if(restored>before.size){next(new Error('Archive verification exceeded original size'));return;}verified.update(chunk);next();}}));
@@ -26,7 +43,7 @@ export async function compressArchive(path:string,maxOutputBytes?:number):Promis
   // Publishing precedes removing the redundant exact-byte original.
   if(!same(before,regular(path)))throw new Error('Archive changed before cleanup');
   rmSync(path);return {path:target,bytes:regular(target).size,sha256:originalHash,originalBytes:bytes};
- }finally{rmSync(temp,{force:true});}
+ }finally{try{guard.close();}finally{staging?.cleanup();}}
 }
 export async function withReadableArchive<T>(path:string,run:(plainPath:string)=>T|Promise<T>):Promise<T>{
  regular(path);if(!path.endsWith('.gz'))return await run(path);
@@ -51,6 +68,7 @@ export function recordArchive(root:string,id:string,kind:'manual'|'rollback'):vo
 export interface ArchiveCareResult {savedBytes:number;removed:string[];protected:string[];}
 export async function maintainArchives(root:string,options:{maxAutomatic?:number;maxAutomaticBytes?:number;covered?:(id:string)=>Promise<boolean>}={}):Promise<ArchiveCareResult>{
  const result:ArchiveCareResult={savedBytes:0,removed:[],protected:[]},folder=join(root,'exports');if(!existsSync(folder))return result;
+ cleanupArchiveStaging(root);
  if(lstatSync(folder).isSymbolicLink())throw new Error('Archive folder must not be a symlink');
  const excluded=new Set<string>();const pending=join(root,'pending-storage-replacement.json');
  if(existsSync(pending)){const value=JSON.parse(readFileSync(pending,'utf8'));for(const id of [value.candidate,value.backup])if(typeof id==='string')excluded.add(id);}
@@ -78,8 +96,8 @@ export async function maintainArchives(root:string,options:{maxAutomatic?:number
 export function cleanupArchiveStaging(root:string):void{
  const folder=join(root,'exports');if(!existsSync(folder)||lstatSync(folder).isSymbolicLink())return;
  for(const name of readdirSync(folder)){
-  if(!name.startsWith('.archive-read-'))continue;const path=join(folder,name),info=lstatSync(path);if(!info.isDirectory()||info.isSymbolicLink())continue;
-  const lock=join(path,'owner.lock');try{const owner=parseLock(readFileSync(lock,'utf8'));if(owner&&!lockOwnerAlive(lock,owner))rmSync(path,{recursive:true});}catch{if(Date.now()-info.mtimeMs>3600000&&!existsSync(lock))rmSync(path,{recursive:true});}
+  if(!name.startsWith('.archive-read-')&&!/^\.archive-write-[A-Za-z0-9]{6}$/.test(name))continue;const path=join(folder,name),info=lstatSync(path);if(!info.isDirectory()||info.isSymbolicLink())continue;
+  const lock=join(path,'owner.lock');try{const lockInfo=regular(lock),text=readFileSync(lock,'utf8'),owner=parseLock(text);if(owner&&!lockOwnerAlive(lock,owner)&&same(info,lstatSync(path))&&same(lockInfo,regular(lock))&&readFileSync(lock,'utf8')===text)rmSync(path,{recursive:true});}catch{if(name.startsWith('.archive-read-')&&Date.now()-info.mtimeMs>3600000&&!existsSync(lock))rmSync(path,{recursive:true});}
  }
 }
 
