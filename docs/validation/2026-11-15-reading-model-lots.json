@@ -1,0 +1,144 @@
+{
+  "sourceEvents": 1593311,
+  "billing30": {
+    "before": {
+      "ms": 49172.553708,
+      "peakRssMiB": 651.734375,
+      "rssMiB": 486.921875,
+      "bytes": 20331
+    },
+    "firstBuild": {
+      "ms": 52945.136541,
+      "peakRssMiB": 920.375,
+      "rssMiB": 582.5,
+      "bytes": 20331
+    },
+    "reuseAfterRestart": {
+      "ms": 241.92525,
+      "peakRssMiB": 218.125,
+      "rssMiB": 218.109375,
+      "bytes": 20331
+    }
+  },
+  "reviewDays": [
+    {
+      "date": "2026-11-07",
+      "before": {
+        "ms": 1793.1430000000003,
+        "peakRssMiB": 367.015625,
+        "rssMiB": 367.015625,
+        "bytes": 13250346
+      },
+      "reuseAfterRestart": {
+        "ms": 141.618833,
+        "peakRssMiB": 351.015625,
+        "rssMiB": 351.015625,
+        "bytes": 13347498
+      }
+    },
+    {
+      "date": "2026-11-12",
+      "before": {
+        "ms": 615.9742919999999,
+        "peakRssMiB": 388.671875,
+        "rssMiB": 388.671875,
+        "bytes": 15204990
+      },
+      "reuseAfterRestart": {
+        "ms": 51.993749999999864,
+        "peakRssMiB": 387.640625,
+        "rssMiB": 387.640625,
+        "bytes": 15330360
+      }
+    },
+    {
+      "date": "2026-11-06",
+      "before": {
+        "ms": 1105.4914160000003,
+        "peakRssMiB": 448.359375,
+        "rssMiB": 448.140625,
+        "bytes": 10152890
+      },
+      "reuseAfterRestart": {
+        "ms": 43.53200000000015,
+        "peakRssMiB": 393.75,
+        "rssMiB": 393.75,
+        "bytes": 10232462
+      }
+    }
+  ],
+  "liveSynthetic": {
+    "samples": 12000,
+    "agentEvidence": 200,
+    "medianMs": {
+      "full": 12.157791000000003,
+      "stream": 3.687000000000012
+    },
+    "retainedSourceEvents": 201
+  },
+  "codecSample": [
+    {
+      "family": "agent",
+      "events": 20000,
+      "blocks": 10,
+      "oldBytes": 1536348,
+      "newBytes": 1504953,
+      "oldMs": 187.93566700000002,
+      "newMs": 300.3164599999999,
+      "contextRuns": 100,
+      "oldReaderExactRoundtrip": true
+    },
+    {
+      "family": "human",
+      "events": 20000,
+      "blocks": 10,
+      "oldBytes": 999658,
+      "newBytes": 994715,
+      "oldMs": 183.69770800000038,
+      "newMs": 231.22221000000013,
+      "contextRuns": 28,
+      "oldReaderExactRoundtrip": true
+    }
+  ],
+  "equality": {
+    "days": [
+      {
+        "date": "2026-11-07",
+        "reviewDeepEqual": true,
+        "billingSnapshotDeepEqual": true,
+        "intervals": 26140
+      },
+      {
+        "date": "2026-11-12",
+        "reviewDeepEqual": true,
+        "billingSnapshotDeepEqual": true,
+        "intervals": 33383
+      },
+      {
+        "date": "2026-11-06",
+        "reviewDeepEqual": true,
+        "billingSnapshotDeepEqual": true,
+        "intervals": 21653
+      }
+    ],
+    "billing30": {
+      "days": 30,
+      "completeBillingReplyDeepEqual": true,
+      "sha256": "1c2bab03137e82670195e87828a9e1f7cb5b16e14b5848153c463226bb2d914e"
+    }
+  },
+  "validation": {
+    "nodeTests": 756,
+    "failures": 0,
+    "build": true
+  },
+  "limits": {
+    "derivedBudgetMiB": 64,
+    "derivedMainFileCapMiB": 128,
+    "genericViewsPerNamespace": 32,
+    "genericViewsTotal": 96,
+    "liveEvidenceRows": 4096,
+    "liveExtraMiB": 4,
+    "pathDependencies": 8192
+  }
+}
