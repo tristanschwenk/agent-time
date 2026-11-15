@@ -14,7 +14,8 @@ import {execFileSync} from 'node:child_process';
 import {basename,isAbsolute,join} from 'node:path';
 import {homedir} from 'node:os';
 import {makeEvent,type CaptureEvent,type Interval,type Issue,type Session,type Summary} from '../capture/events.ts';
-import {readWindowEvents} from '../capture/summary-window.ts';
+import {readWindowEvents,windowBounds} from '../capture/summary-window.ts';
+import{dependencyRevision,evidenceWindowRevision}from'../capture/dependency-revisions.ts';
 import {minuteCreditSeconds,summarize} from '../capture/correlate.ts';
 import {agentSessionKey} from '../capture/session-identity.ts';
 import {applyHumanDecisions,groupHumanReview,humanReviewState,type HumanDecision,type HumanSplit} from '../capture/human-review.ts';
@@ -92,8 +93,6 @@ export function snapshot(output:string,from:number,to:number,readOptions:{countT
  let projection:PeriodProjection|undefined;
  try{
   if(ownTransaction)db.exec('BEGIN');
-  const decisions=db.prepare('SELECT start_event_id,end_event_id,mode,project_path FROM human_decisions').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),mode:row.mode,projectPath:row.project_path===null?null:String(row.project_path)})) as HumanDecision[];
-  const splits=db.prepare('SELECT start_event_id,end_event_id,split_at,before_path,after_path FROM human_splits').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),splitAt:Number(row.split_at),beforePath:row.before_path===null?null:String(row.before_path),afterPath:row.after_path===null?null:String(row.after_path)})) as HumanSplit[];
   const options={...(readOptions.settings||snapshotSettings(output)),...(readOptions.countTaskCounters!==undefined?{countTaskCounters:readOptions.countTaskCounters}:{})},pending=readOptions.persistedOnly?[]:pendingReports(output);
   // Read the durable stamp through this exact connection, including a caller's
   // pinned read transaction. Never create schema or revise source evidence here.
@@ -101,10 +100,11 @@ export function snapshot(output:string,from:number,to:number,readOptions:{countT
    if(readOptions.bypassProjection||!readOptions.billingEvidence||!readOptions.persistedOnly||options.countTaskCounters||to>now())return;
    try{
     const stamp=db.prepare('SELECT identity,revision FROM at_projection_revision WHERE id=1').get();if(!stamp)return;
-    const evidence=db.prepare('SELECT count(*) n,max(observed_at) last FROM events').get();
+    const evidence=chunks(from,to).map(([start,end])=>evidenceWindowRevision(db,windowBounds(start,end,options.agentIdleThreshold)));
+    const oldest=db.prepare('SELECT observed_at FROM events ORDER BY observed_at LIMIT 1').get();
     const path=String(db.prepare('PRAGMA database_list').all().find(row=>row.name==='main')?.file||'');if(!path)return;
     const file=statSync(path),identity=[file.dev,file.ino,file.birthtimeMs];
-    return createHash('sha256').update(JSON.stringify([1,identity,stamp,evidence,from,to,chunks(from,to),options,decisions,splits])).digest('hex');
+    return createHash('sha256').update(JSON.stringify([2,identity,stamp,evidence,oldest,from,to,chunks(from,to),options,dependencyRevision(db,'review'),dependencyRevision(db,'resources'),dependencyRevision(db,'reports')])).digest('hex');
    }catch{return;}
   };
   const cacheKey=projectionKey(),cacheDate=JSON.stringify([from,to,chunks(from,to),options]);
@@ -112,6 +112,8 @@ export function snapshot(output:string,from:number,to:number,readOptions:{countT
    let limit=DEFAULT_STORAGE_LIMIT_MB;try{const stored=Number(JSON.parse(readFileSync(join(output,'settings.json'),'utf8')).storageLimitMB);if(Number.isFinite(stored)&&stored>0)limit=stored;}catch{}
    const usage=quickStorageUsage(output);return !usage.truncated&&usage.managedBytes+bytes<limit*1024*1024*.9;
   });const hit=projection.getView<Snapshot>('billing',cacheDate,cacheKey);if(hit)return hit;}
+  const decisions=db.prepare('SELECT start_event_id,end_event_id,mode,project_path FROM human_decisions').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),mode:row.mode,projectPath:row.project_path===null?null:String(row.project_path)})) as HumanDecision[];
+  const splits=db.prepare('SELECT start_event_id,end_event_id,split_at,before_path,after_path FROM human_splits').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),splitAt:Number(row.split_at),beforePath:row.before_path===null?null:String(row.before_path),afterPath:row.after_path===null?null:String(row.after_path)})) as HumanSplit[];
   const resourceFrom=readOptions.billingEvidence?from-31*86400:now()-31*86400,resourceTo=readOptions.billingEvidence?to+31*86400:Infinity;
   const resourceRows=db.prepare(`SELECT payload FROM events ${isPackedEventDatabase(db)?'INDEXED BY events_resources_at':''} WHERE observed_at>? AND observed_at<? AND json_extract(payload,'$.source')='agent_report' AND json_extract(payload,'$.kind')='resource' LIMIT 20001`).all(resourceFrom,resourceTo);
   if(resourceRows.length>20000)throw new Error('Too many resource mappings for a bounded summary; use explicit project attribution');

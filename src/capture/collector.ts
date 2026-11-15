@@ -90,7 +90,7 @@ export class Collector {
   private lastError:string|null=null; private macos:Record<string,unknown>|null=null; private lockOwned=false;
   private failedPoller:string|null=null; private macError:string|null=null;
   private stopping:Promise<ReturnType<Collector['status']>>|undefined;
-  private surfaces:CaptureSettings={...defaultSettings};private resourceCache?:{at:number;value:Map<string,ReportedResource>};private summaryTokens=new WeakMap<Summary,string>();private summaryTokenCount=0;private summaryEpoch=Date.now().toString(36);private derivedMemo?:{day:Summary;resources:Map<string,ReportedResource>;counters:string;value:Summary}; private revision=0;
+  private surfaces:CaptureSettings={...defaultSettings};private resourceCache?:{at:number;stamp:string;expires:number;signature:string;value:Map<string,ReportedResource>};private summaryTokens=new WeakMap<Summary,string>();private summaryTokenCount=0;private summaryEpoch=Date.now().toString(36);private derivedMemo?:{day:Summary;resources:Map<string,ReportedResource>;counters:string;value:Summary}; private revision=0;
   private surfaceHistory:CaptureEvent[]=[];
   /** Whole-history summary, only for callers that ask without a date. */
   private summaryCache:{revision:string;at:number;value:Summary}|undefined;
@@ -674,7 +674,7 @@ export class Collector {
   private reviewData(){
     // Review edits by this process bump the store's revision; edits by another
     // process change PRAGMA data_version. Both are cheap to check.
-    const revision=this.store.incrementalSafetyRevision();
+    const revision=this.store.dependencyRevision('review');
     if(this.reviewCache?.revision!==revision)this.reviewCache={revision,decisions:this.store.humanDecisions(),splits:this.store.humanSplits()};
     return this.reviewCache;
   }
@@ -699,12 +699,13 @@ export class Collector {
   }
   /** Pages agents reported in the last 31 days, refreshed at most every 10 seconds. */
   private resources(){
-    if(!this.resourceCache||Date.now()-this.resourceCache.at>10_000){
-      const now=Date.now()/1000;
-      const next=reportedResources(this.store.agentReports(now-31*86400,now+60)),previous=this.resourceCache?.value;
-      // Keep the previous map when nothing changed, so derived summaries keep their identity.
+    const now=Date.now()/1000,stamp=this.store.dependencyRevision('resources');
+    if(!this.resourceCache||this.resourceCache.stamp!==stamp||now<this.resourceCache.at||now>this.resourceCache.expires){
+      const events=this.store.resourceEvents(now-31*86400,now+60),next=reportedResources(events),previous=this.resourceCache?.value;
       const same=previous&&previous.size===next.size&&[...next].every(([key,value])=>JSON.stringify(previous.get(key))===JSON.stringify(value));
-      this.resourceCache={at:Date.now(),value:same?previous:next};
+      // Sliding history expires; future-dated declarations become visible too.
+      let expires=this.store.nextResourceAt(now+60)-60;for(const event of events)expires=Math.min(expires,event.observedAt+31*86400);
+      this.resourceCache={at:now,stamp,expires,signature:same?this.resourceCache!.signature:createHash('sha256').update(JSON.stringify([...next])).digest('hex'),value:same?previous:next};
     }
     return this.resourceCache.value;
   }
@@ -754,7 +755,7 @@ export class Collector {
   }
   private persistedHomeKey(date:string):string|undefined{
     const bounds=localDayBounds(date);if(Date.now()/1000<bounds.to)return;
-    try{const review=this.reviewData();return createHash('sha256').update(JSON.stringify([3,bounds,this.summaryOptions(),this.surfaces.countTaskCounters,this.store.projectionSignature(windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold)),review.decisions,review.splits,this.store.manualNotes(date),this.store.dayReview(date),[...this.resources()],this.surfaces.countTaskCounters?this.reportedWork(date):[]])).digest('hex');}catch{return;}
+    try{const review=this.store.dependencyRevision('review');this.resources();return createHash('sha256').update(JSON.stringify([4,bounds,this.summaryOptions(),this.surfaces.countTaskCounters,this.store.projectionSignature(windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold)),review,this.store.manualNotes(date),this.store.dayReview(date),this.resourceCache!.signature,this.surfaces.countTaskCounters?this.reportedWork(date):[]])).digest('hex');}catch{return;}
   }
   versionedHomeResponse(date:string,maxAgeMs=0,since?:string){
     const key=this.persistedHomeKey(date),token=key?`h-${key.slice(0,60)}`:undefined;

@@ -9,6 +9,7 @@ import { validateEvent, type CaptureEvent } from './events.ts';
 import {humanDecisionSelection,type HumanDecision,type HumanSplit,type HumanDecisionSegment} from './human-review.ts';
 import {needsHeartbeat,observationKey,observationSignature,workerHeartbeatSeconds} from './observation-retention.ts';
 import {randomUUID} from 'node:crypto';
+import{ensureDependencyRevisions,dependencyRevision,evidenceWindowRevision}from'./dependency-revisions.ts';
 import {readWindowEvents,type WindowBounds} from './summary-window.ts';
 
 export interface ManualNote {id:string;start:number;end:number;project:string;note:string;createdAt:number;}
@@ -44,6 +45,7 @@ export class EventStore {
     this.db.exec("CREATE INDEX IF NOT EXISTS events_hook_provider ON events(json_extract(payload,'$.provider')) WHERE json_extract(payload,'$.source')='hook'");
     // Terminal observations are stored only on change; find the newest per handle directly.
     this.db.exec("CREATE INDEX IF NOT EXISTS events_terminal_handle ON events(json_extract(payload,'$.terminalHandle')) WHERE json_extract(payload,'$.kind')='terminal'");
+    ensureDependencyRevisions(this.db,isPackedEventDatabase(this.db));
   }
   /** Stable across process restarts; append signatures remain local to each evidence window. */
   projectionSignature(bounds:WindowBounds):string{
@@ -56,8 +58,7 @@ export class EventStore {
       CREATE TRIGGER IF NOT EXISTS at_projection_block_update AFTER UPDATE ON at_event_blocks BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;
       CREATE TRIGGER IF NOT EXISTS at_projection_block_delete AFTER DELETE ON at_event_blocks BEGIN UPDATE at_projection_revision SET revision=revision+1 WHERE id=1; END;`);
     const stamp=this.db.prepare('SELECT identity,revision FROM at_projection_revision WHERE id=1').get()!;
-    const signature=this.windowSignature(bounds).split(':').slice(0,4).join(':');
-    return `${this.storageIdentity}:${stamp.identity}:${stamp.revision}:${signature}`;
+    return `${this.storageIdentity}:${stamp.identity}:${stamp.revision}:${evidenceWindowRevision(this.db,bounds)}`;
   }
   /** The open connection, for collaborators that must share it (see UsageReader). */
   get database():DatabaseSync{return this.db;}
@@ -188,16 +189,16 @@ export class EventStore {
   }
   /** Only metadata used by this exact reader window; unrelated live samples do not age closed views. */
   windowSignature(bounds:WindowBounds):string{
-    const activity=isPackedEventDatabase(this.db)?'activity_sample=0':"json_extract(payload,'$.kind')<>'activity' OR json_extract(payload,'$.source')<>'macos'";
-    const row=this.db.prepare(`SELECT count(*) n,coalesce(max(rowid),0) m FROM events WHERE observed_at>=? AND observed_at<? AND (observed_at>=? AND observed_at<? OR ${activity})`).get(bounds.readFrom,bounds.readTo,bounds.activityFrom,bounds.activityTo)!;
-    const terminals=this.db.prepare("SELECT count(*) n,coalesce(max(rowid),0) m FROM events INDEXED BY events_terminal_handle WHERE json_extract(payload,'$.kind')='terminal'").get()!;
-    return `${row.n}:${row.m}:${terminals.n}:${terminals.m}:${this.incrementalSafetyRevision()}`;
+    return `${evidenceWindowRevision(this.db,bounds)}:${this.dependencyRevision('review')}`;
   }
-  /** Existing indexes let counter reads notice declarations/closures without decoding unrelated events. */
-  reportedEvidenceRevision():string{
-    const reports=this.db.prepare("SELECT count(*) n,coalesce(max(rowid),0) m FROM events INDEXED BY events_source_recent WHERE json_extract(payload,'$.source')='agent_report'").get()!;
-    const ends=this.db.prepare("SELECT count(*) n,coalesce(max(rowid),0) m FROM events INDEXED BY events_session_ends_at WHERE json_extract(payload,'$.kind')='session_end'").get()!;
-    return `${reports.n}:${reports.m}:${ends.n}:${ends.m}:${this.incrementalSafetyRevision()}`;
+  dependencyRevision(scope:'resources'|'reports'|'review'):string{return dependencyRevision(this.db,scope);}
+  /** Only declarations and session endings age counter evidence. Leases are still evaluated per read. */
+  reportedEvidenceRevision():string{return this.dependencyRevision('reports');}
+  resourceEvents(start:number,end:number):CaptureEvent[]{
+    return this.db.prepare("SELECT payload FROM events INDEXED BY events_resources_at WHERE observed_at>=? AND observed_at<? AND json_extract(payload,'$.source')='agent_report' AND json_extract(payload,'$.kind')='resource' ORDER BY observed_at,rowid").all(start,end).map(row=>JSON.parse(String(row.payload)) as CaptureEvent);
+  }
+  nextResourceAt(from:number):number{
+    const row=this.db.prepare("SELECT observed_at at FROM events INDEXED BY events_resources_at WHERE observed_at>=? AND json_extract(payload,'$.source')='agent_report' AND json_extract(payload,'$.kind')='resource' ORDER BY observed_at LIMIT 1").get(from);return row?Number(row.at):Infinity;
   }
   nextSessionEndAt(from:number):number{
     const row=this.db.prepare("SELECT observed_at at FROM events INDEXED BY events_session_ends_at WHERE json_extract(payload,'$.kind')='session_end' AND observed_at>=? ORDER BY observed_at LIMIT 1").get(from);
