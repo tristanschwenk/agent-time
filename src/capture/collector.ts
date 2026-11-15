@@ -487,8 +487,10 @@ export class Collector {
     const saved=this.store.dayReview(date);
     // Reviews saved before fingerprints were versioned need the one-time check.
     if(saved&&!saved.fingerprint.startsWith(FINGERPRINT_VERSION))return this.dayReviewSnapshot(date);
-    const {humanIdleMinutes,agentIdleMinutes,countTaskCounters}=this.surfaces;
-    const signature=[DAY_REVIEW_CACHE_VERSION,humanIdleMinutes,agentIdleMinutes,countTaskCounters,this.store.daySignature(bounds.readFrom,bounds.readTo,date)].join('|');
+    // Use the same effective resource/time/source dependencies as final Home
+    // views; count/max-rowid proxies miss expiry and in-place corrections.
+    const key=this.persistedHomeKey(date);if(!key)return this.dayReviewSnapshot(date);
+    const signature=[DAY_REVIEW_CACHE_VERSION,key].join('|');
     type Snapshot=ReturnType<Collector['dayReviewSnapshot']>;
     const cached=this.store.cachedDayReview(date,signature) as Snapshot|undefined;
     if(cached)return {...cached,completedAt:saved?.completedAt||null,stale:Boolean(saved&&saved.fingerprint!==cached.fingerprint)};
