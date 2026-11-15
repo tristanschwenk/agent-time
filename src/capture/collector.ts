@@ -990,7 +990,8 @@ export class Collector {
     finally{this.endCoverageTick();}
   }
   stop(storagePause=false):Promise<ReturnType<Collector['status']>> {
-    if(!storagePause&&this.running&&this.careState.pressure?.autoResume){this.persistPressure({...this.careState.pressure,autoResume:false});clearTimeout(this.storageResumeTimer);}
+    // A user stop also cancels recovery while capture is already paused and its lock released.
+    if(!storagePause&&this.careState.pressure?.autoResume){this.persistPressure({...this.careState.pressure,autoResume:false});clearTimeout(this.storageResumeTimer);}
     if(this.stopping)return this.stopping;
     if(!this.lockOwned)return Promise.resolve(this.status());
     this.stopping=this.stopOwned().finally(()=>{this.stopping=undefined;this.releaseIdleLock();});return this.stopping;
