@@ -1,3 +1,4 @@
+import{billingLocalDate,billingDayStart,nextBillingDate}from'./billing-calendar.ts';
 import{resourceKey}from'./reported-resources.ts';
 import{DatabaseSync}from'node:sqlite';import{createHash}from'node:crypto';import{serialize,deserialize}from'node:v8';import{deflateRawSync,inflateRawSync}from'node:zlib';import{existsSync,mkdirSync,chmodSync,statSync,readFileSync}from'node:fs';import{join}from'node:path';
 import type{BillingDayInput,BillingSpan}from'./billing-types.ts';import type{CaptureEvent}from'./events.ts';import{validProjectPaths,type ProjectPathDependency}from'./project-path.ts';import{ingestionMeta,ingestionJournalState,readIngestionChanges,type IngestMeta}from'./ingestion-journal.ts';import{ToolReconciliation}from'./tool-reconciliation.ts';import{quickStorageUsage,DEFAULT_STORAGE_LIMIT_MB}from'./storage-policy.ts';
@@ -35,6 +36,12 @@ export class IngestionModel{
    CREATE INDEX IF NOT EXISTS credited_tasks_identity ON credited_tasks(task);
    CREATE INDEX IF NOT EXISTS credited_dirty ON credited_slices(dirty,date);`);this.tools=new ToolReconciliation(db);
    if(!db.prepare('PRAGMA table_info(ingestion_state)').all().some(row=>row.name==='started')){db.exec('BEGIN IMMEDIATE');try{db.exec('ALTER TABLE ingestion_state ADD COLUMN started INTEGER NOT NULL DEFAULT 0;UPDATE credited_slices SET dirty=1');this.tools.reset();db.exec('COMMIT');}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}
+   // Keep a monotonic discovery sequence: bucket values can arrive out of order.
+   const registrationExists=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ingestion_registration_buckets'").get());
+   if(!registrationExists){db.exec('BEGIN IMMEDIATE');try{db.exec(`CREATE TABLE IF NOT EXISTS ingestion_registration_buckets(sequence INTEGER PRIMARY KEY AUTOINCREMENT,bucket INTEGER NOT NULL UNIQUE);
+    CREATE TABLE IF NOT EXISTS ingestion_registration_meta(id INTEGER PRIMARY KEY,signature TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS ingestion_registration(project TEXT PRIMARY KEY,cursor INTEGER NOT NULL,offset INTEGER NOT NULL DEFAULT 0);`);
+   db.exec('INSERT INTO ingestion_registration_buckets(bucket) SELECT bucket FROM ingestion_days ORDER BY bucket');db.exec('COMMIT');}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}}
    db.exec('PRAGMA user_version=3');
   }catch(error){db.close();throw error;}
  }
@@ -61,7 +68,7 @@ export class IngestionModel{
   if(!this.canWrite(256*1024))return{caughtUp:false,scanned,cursor:state?.rowid??0,capacity:true};
   db.exec('BEGIN IMMEDIATE');try{
    state=this.state();if(state?.identity===target.identity&&(state.sequence>target.sequence||!state.initial&&state.rowid>target.rowid&&state.sequence===target.sequence)){db.exec('ROLLBACK');return{caughtUp:false,scanned,cursor:state.rowid,future:true};}
-   if(!state||state.identity!==target.identity){db.exec('DELETE FROM credited_periods;DELETE FROM credited_slices;DELETE FROM credited_sessions;DELETE FROM credited_tasks;DELETE FROM credited_urls;DELETE FROM ingestion_days');this.tools.reset();state={identity:target.identity,rowid:0,sequence:journal.sequence,initial:true};}
+   if(!state||state.identity!==target.identity){db.exec('DELETE FROM credited_periods;DELETE FROM credited_slices;DELETE FROM credited_sessions;DELETE FROM credited_tasks;DELETE FROM credited_urls;DELETE FROM ingestion_days;DELETE FROM ingestion_registration_buckets;DELETE FROM ingestion_registration;DELETE FROM ingestion_registration_meta');this.tools.reset();state={identity:target.identity,rowid:0,sequence:journal.sequence,initial:true};}
    if(state.sequence<journal.firstSequence-1){db.exec('UPDATE credited_slices SET dirty=1');this.tools.reset();state.rowid=0;state.initial=true;state.sequence=journal.sequence;}
    const buckets=new Set<number>(),discover=(...times:number[])=>{for(const at of times)if(Number.isFinite(at))buckets.add(Math.floor(at/86400));};
    const changes=readIngestionChanges(source,state.sequence,limit),read=source.prepare('SELECT rowid,observed_at,payload FROM events WHERE event_id=?');
@@ -82,11 +89,35 @@ export class IngestionModel{
     if(hasSlices){this.mark(meta);if(meta.observedAt!==Number(row.observed_at))this.mark({...meta,observedAt:Number(row.observed_at)});}if(event?.source==='hook')boundaries.push({rowid:Number(row.rowid),event});discover(meta.observedAt,Number(row.observed_at));state.rowid=Number(row.rowid);scanned++;
    }
    delete state.initial;if(rows.length<limit)state.rowid=target.rowid;
-   this.tools.ingest(boundaries);for(const bucket of buckets)db.prepare('INSERT OR IGNORE INTO ingestion_days VALUES(?)').run(bucket);
+   this.tools.ingest(boundaries);for(const bucket of buckets){db.prepare('INSERT OR IGNORE INTO ingestion_days VALUES(?)').run(bucket);db.prepare('INSERT OR IGNORE INTO ingestion_registration_buckets(bucket) VALUES(?)').run(bucket);}
    this.save(state);db.exec('COMMIT');return{caughtUp:state.rowid===target.rowid&&state.sequence===target.sequence,scanned,cursor:state.rowid};
   }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
  register(project:string,date:string,config:string,start:number,end:number,idle:number){const key=JSON.stringify([project,date]);this.database.prepare(`INSERT INTO credited_slices(key,project,date,config,start,day_end,read_from,read_to,activity_from,activity_to,dirty,as_of,valid_until) VALUES(?,?,?,?,?,?,?,?,?,?,1,0,0) ON CONFLICT(key) DO UPDATE SET dirty=1,config=excluded.config,start=excluded.start,day_end=excluded.day_end,read_from=excluded.read_from,read_to=excluded.read_to,activity_from=excluded.activity_from,activity_to=excluded.activity_to WHERE config<>excluded.config OR start<>excluded.start OR day_end<>excluded.day_end`).run(key,project,date,config,start,end,start-86400-idle,end+86400+idle,start-60,end+60);}
+ /** Register bounded project/bucket pairs and candidate dates, independently of the
+  * source-event cursor. Ordinary events in an existing bucket do no date work.
+  * A changed ownership configuration or local day restarts this durable scan.
+  * The within-bucket offset bounds unusually large idle windows too. */
+ registerDates(projects:Array<{id:string;timezone:string;config:string}>,idle:number,now:number,limit=128){
+  const db=this.database,signature=createHash('sha256').update(JSON.stringify([idle,projects.map(p=>[p.id,p.timezone,p.config,billingLocalDate(now,p.timezone)])])).digest('hex');
+  const changed=db.prepare('SELECT signature FROM ingestion_registration_meta WHERE id=1').get()?.signature!==signature;
+  const max=Number(db.prepare('SELECT coalesce(max(sequence),0) n FROM ingestion_registration_buckets').get()!.n);
+  if(!changed&&!db.prepare('SELECT 1 FROM ingestion_registration WHERE cursor<? LIMIT 1').get(max))return{complete:true,registered:0};
+  if(!this.canWrite(256*1024))return{complete:false,registered:0,capacity:true};
+  let registered=0,remaining=Math.max(1,Math.min(limit,1024)),candidates=remaining*7;const seen=new Set<string>(),reach=Math.ceil((86400+idle)/86400)+1;
+  db.exec('BEGIN IMMEDIATE');try{
+   if(changed){db.exec('DELETE FROM ingestion_registration');db.prepare('INSERT OR REPLACE INTO ingestion_registration_meta VALUES(1,?)').run(signature);const insert=db.prepare('INSERT INTO ingestion_registration(project,cursor) VALUES(?,0)');for(const p of projects)insert.run(p.id);}
+   for(const p of projects){if(!remaining)break;const state=db.prepare('SELECT cursor,offset FROM ingestion_registration WHERE project=?').get(p.id)!;let cursor=Number(state.cursor),offset=Number(state.offset);if(cursor>=max)continue;
+    const today=billingLocalDate(now,p.timezone),rows=db.prepare('SELECT sequence,bucket FROM ingestion_registration_buckets WHERE sequence>? ORDER BY sequence LIMIT ?').all(cursor,remaining);
+    for(const row of rows){for(let delta=-reach+offset;delta<=reach;delta++){
+     if(!candidates){remaining=0;break;}candidates--;offset++;
+     const date=billingLocalDate((Number(row.bucket)+delta)*86400,p.timezone),key=JSON.stringify([p.id,date]);if(date>today||seen.has(key))continue;seen.add(key);this.register(p.id,date,p.config,billingDayStart(date,p.timezone),billingDayStart(nextBillingDate(date),p.timezone),idle);registered++;
+    }if(offset<2*reach+1)break;cursor=Number(row.sequence);offset=0;remaining--;if(!remaining||!candidates){remaining=0;break;}}
+    db.prepare('UPDATE ingestion_registration SET cursor=?,offset=? WHERE project=?').run(cursor,offset,p.id);
+   }
+   const complete=!db.prepare('SELECT 1 FROM ingestion_registration WHERE cursor<? LIMIT 1').get(max);db.exec('COMMIT');return{complete,registered};
+  }catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
+ }
  buckets(){return this.database.prepare('SELECT bucket FROM ingestion_days ORDER BY bucket').all().map(r=>Number(r.bucket));}
  historyStats(now:number,projects:string[]){
   const row=this.database.prepare(`SELECT count(*) total,coalesce(sum(CASE WHEN dirty=0 AND valid_until>? THEN 1 ELSE 0 END),0) prepared FROM credited_slices WHERE day_end<=? AND project IN(SELECT value FROM json_each(?))`).get(now,now,JSON.stringify(projects))!;
@@ -123,6 +154,6 @@ export class IngestionModel{
   }finally{db.exec('ROLLBACK');if(invalid)db.prepare('UPDATE credited_slices SET dirty=1 WHERE key=? AND digest=?').run(invalid.key,invalid.digest);}}
   catch{return undefined;}
  }
- discard(){try{const db=this.database;db.exec('BEGIN IMMEDIATE;DELETE FROM credited_periods;DELETE FROM credited_slices;DELETE FROM credited_sessions;DELETE FROM credited_tasks;DELETE FROM credited_urls;DELETE FROM ingestion_days;DELETE FROM ingestion_state');this.tools.reset();db.exec('COMMIT;VACUUM');return true;}catch{if(this.database.isTransaction)this.database.exec('ROLLBACK');return false;}}
+ discard(){try{const db=this.database;db.exec('BEGIN IMMEDIATE;DELETE FROM credited_periods;DELETE FROM credited_slices;DELETE FROM credited_sessions;DELETE FROM credited_tasks;DELETE FROM credited_urls;DELETE FROM ingestion_days;DELETE FROM ingestion_registration_buckets;DELETE FROM ingestion_registration;DELETE FROM ingestion_registration_meta;DELETE FROM ingestion_state');this.tools.reset();db.exec('COMMIT;VACUUM');return true;}catch{if(this.database.isTransaction)this.database.exec('ROLLBACK');return false;}}
  close(){this.database.close();}
 }
