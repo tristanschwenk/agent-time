@@ -6,8 +6,10 @@ import {boundedSpoolListing,MAX_PENDING_HOOKS,MAX_HOOK_BYTES} from '../capture/h
 import {openEventDatabase,isPackedEventDatabase} from '../capture/event-database.ts';
 import {DatabaseSync} from 'node:sqlite';
 import {isDeepStrictEqual} from 'node:util';
-import {randomUUID} from 'node:crypto';
-import {existsSync,linkSync,lstatSync,mkdirSync,readFileSync,readdirSync,unlinkSync,writeFileSync} from 'node:fs';
+import {quickStorageUsage,DEFAULT_STORAGE_LIMIT_MB} from '../capture/storage-policy.ts';
+import {PeriodProjection} from '../capture/period-projection.ts';
+import {createHash,randomUUID} from 'node:crypto';
+import {existsSync,statSync,linkSync,lstatSync,mkdirSync,readFileSync,readdirSync,unlinkSync,writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {basename,isAbsolute,join} from 'node:path';
 import {homedir} from 'node:os';
@@ -84,13 +86,32 @@ function chunks(from:number,to:number):Array<[number,number]>{
  * sessions keep their start and end), but Mac activity only around the day, so
  * memory stays near one day of samples and 30-day ranges work.
  */
-export function snapshot(output:string,from:number,to:number,readOptions:{countTaskCounters?:boolean;billingEvidence?:boolean;persistedOnly?:boolean;database?:DatabaseSync;settings?:ReturnType<typeof snapshotSettings>}={}):Snapshot{
+export function snapshot(output:string,from:number,to:number,readOptions:{countTaskCounters?:boolean;billingEvidence?:boolean;persistedOnly?:boolean;database?:DatabaseSync;settings?:ReturnType<typeof snapshotSettings>;bypassProjection?:boolean}={}):Snapshot{
  if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from||to-from>31*86400)throw new Error('Invalid bounded time range');
- const db=readOptions.database||database(output);
+ const db=readOptions.database||database(output),ownTransaction=!db.isTransaction;
+ let projection:PeriodProjection|undefined;
  try{
+  if(ownTransaction)db.exec('BEGIN');
   const decisions=db.prepare('SELECT start_event_id,end_event_id,mode,project_path FROM human_decisions').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),mode:row.mode,projectPath:row.project_path===null?null:String(row.project_path)})) as HumanDecision[];
   const splits=db.prepare('SELECT start_event_id,end_event_id,split_at,before_path,after_path FROM human_splits').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),splitAt:Number(row.split_at),beforePath:row.before_path===null?null:String(row.before_path),afterPath:row.after_path===null?null:String(row.after_path)})) as HumanSplit[];
   const options={...(readOptions.settings||snapshotSettings(output)),...(readOptions.countTaskCounters!==undefined?{countTaskCounters:readOptions.countTaskCounters}:{})},pending=readOptions.persistedOnly?[]:pendingReports(output);
+  // Read the durable stamp through this exact connection, including a caller's
+  // pinned read transaction. Never create schema or revise source evidence here.
+  const projectionKey=()=>{
+   if(readOptions.bypassProjection||!readOptions.billingEvidence||!readOptions.persistedOnly||options.countTaskCounters||to>now())return;
+   try{
+    const stamp=db.prepare('SELECT identity,revision FROM at_projection_revision WHERE id=1').get();if(!stamp)return;
+    const evidence=db.prepare('SELECT count(*) n,max(observed_at) last FROM events').get();
+    const path=String(db.prepare('PRAGMA database_list').all().find(row=>row.name==='main')?.file||'');if(!path)return;
+    const file=statSync(path),identity=[file.dev,file.ino,file.birthtimeMs];
+    return createHash('sha256').update(JSON.stringify([1,identity,stamp,evidence,from,to,chunks(from,to),options,decisions,splits])).digest('hex');
+   }catch{return;}
+  };
+  const cacheKey=projectionKey(),cacheDate=JSON.stringify([from,to,chunks(from,to),options]);
+  if(cacheKey){projection=new PeriodProjection(join(output,'derived-periods.sqlite'),64*1024*1024,bytes=>{
+   let limit=DEFAULT_STORAGE_LIMIT_MB;try{const stored=Number(JSON.parse(readFileSync(join(output,'settings.json'),'utf8')).storageLimitMB);if(Number.isFinite(stored)&&stored>0)limit=stored;}catch{}
+   const usage=quickStorageUsage(output);return !usage.truncated&&usage.managedBytes+bytes<limit*1024*1024*.9;
+  });const hit=projection.getView<Snapshot>('billing',cacheDate,cacheKey);if(hit)return hit;}
   const resourceFrom=readOptions.billingEvidence?from-31*86400:now()-31*86400,resourceTo=readOptions.billingEvidence?to+31*86400:Infinity;
   const resourceRows=db.prepare(`SELECT payload FROM events ${isPackedEventDatabase(db)?'INDEXED BY events_resources_at':''} WHERE observed_at>? AND observed_at<? AND json_extract(payload,'$.source')='agent_report' AND json_extract(payload,'$.kind')='resource' LIMIT 20001`).all(resourceFrom,resourceTo);
   if(resourceRows.length>20000)throw new Error('Too many resource mappings for a bounded summary; use explicit project attribution');
@@ -189,8 +210,10 @@ export function snapshot(output:string,from:number,to:number,readOptions:{countT
   for(const i of children){const key=agentSessionKey(i),group=byChild.get(key)||[];group.push([i.start,i.end]);byChild.set(key,group);}
   const summary:Summary={intervals,coverage,unresolved,sessions:[...sessions.values()],humanSeconds:measured.humanActiveSeconds,agentSeconds:measured.agentRunningSeconds,agentWallSeconds:measured.agentWallSeconds,childAgentSeconds:[...byChild.values()].reduce((sum,group)=>sum+minuteCreditSeconds(group),0),elapsedSeconds:measured.overlapMergedWallSeconds};
   const truncatedBefore=Boolean(db.prepare('SELECT 1 AS found FROM events WHERE observed_at<? LIMIT 1').get(readFrom));
-  return {summary,events:[...kept.values()].sort((a,b)=>a.observedAt-b.observedAt),from,to,truncatedBefore,metadataTruncated,firstSeen};
- }finally{if(!readOptions.database)db.close();}
+  const result={summary,events:[...kept.values()].sort((a,b)=>a.observedAt-b.observedAt),from,to,truncatedBefore,metadataTruncated,firstSeen};
+  if(cacheKey&&cacheKey===projectionKey())projection?.putView('billing',cacheDate,cacheKey,result);
+  return result;
+ }finally{projection?.close();if(ownTransaction&&db.isTransaction)db.exec('ROLLBACK');if(!readOptions.database)db.close();}
 }
 const hasIssueKeys=(event:CaptureEvent)=>[event.data?.browserUrl,event.data?.browserTitle,event.data?.orcaSelectedTabTitle,event.data?.tabTitle].some(value=>issueKeys(value).length>0);
 const canonicalProject=(value:string)=>{const path=value.includes('::')?value.split('::').at(-1)||value:value;return isAbsolute(path)?projectPathFromWorktree(path):path;};

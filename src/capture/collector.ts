@@ -678,7 +678,9 @@ export class Collector {
     if(this.reviewCache?.revision!==revision)this.reviewCache={revision,decisions:this.store.humanDecisions(),splits:this.store.humanSplits()};
     return this.reviewCache;
   }
-  private daySummary(date:string,maxAgeMs=0):Summary{
+  private daySummary(date:string,maxAgeMs=0,persistedKey=this.persistedHomeKey(date)):Summary{
+    const persisted=persistedKey?this.projection.getView<Summary>('review',date,persistedKey):undefined;if(persisted)return persisted;
+    if(persistedKey)this.releaseViewRaw(date);
     const window=this.windowSummary(date,maxAgeMs),cached=this.decorated.get(date);
     const hadDay=cached?.day;
     const day=cached?.value!==window?summaryForDate(window,date):cached.day||=summaryForDate(window,date);
@@ -692,6 +694,7 @@ export class Collector {
     const bounds=localDayBounds(date);
     const value=reports.length?creditTaskCounters(resourced,reports.map(item=>({...item,start:Math.max(item.start,bounds.from),end:Math.min(item.end,bounds.to)}))):resourced;
     this.derivedMemo={day,resources,counters,value};
+    if(persistedKey&&persistedKey===this.persistedHomeKey(date))this.projection.putView('review',date,persistedKey,value);
     return value;
   }
   /** Pages agents reported in the last 31 days, refreshed at most every 10 seconds. */
@@ -779,20 +782,22 @@ export class Collector {
   private viewedDaySummary(date:string,maxAgeMs=0):{value:Summary;token:string}{
     const bounds=localDayBounds(date),closed=Date.now()/1000>=bounds.to;
     if(!closed){const value=this.daySummary(date,maxAgeMs);return {value,token:this.tokenForSummary(value)};}
+    const persistedKey=this.persistedHomeKey(date),persisted=persistedKey?this.projection.getView<Summary>('review',date,persistedKey):undefined;
+    if(persisted)return {value:persisted,token:`r-${persistedKey}`};
     const window=windowBounds(bounds.from,bounds.to,this.summaryOptions().agentIdleThreshold);
     const prefix=()=>JSON.stringify([bounds,this.summaryOptions(),this.revision,this.store.windowSignature(window)]);
     const before=prefix(),resources=this.resources(),reports=this.surfaces.countTaskCounters?this.reportedWork(date):[];
     const key=(resources:Map<string,ReportedResource>,counters:string)=>before+':'+createHash('sha256').update(JSON.stringify([...resources])).update(counters).digest('hex');
     const hit=this.viewSnapshots.get(date,key(resources,JSON.stringify(reports)));
-    if(hit)return hit;
+    if(hit)return {...hit,token:persistedKey?`r-${persistedKey}`:hit.token};
     // A changed dependency must not reuse a 15-second raw memo with old evidence.
     this.releaseViewRaw(date);
-    const value=this.daySummary(date,0),token=this.tokenForSummary(value),memo=this.derivedMemo;
+    const value=this.daySummary(date,0,persistedKey),token=this.tokenForSummary(value),memo=this.derivedMemo;
     // Never label an old calculation with evidence that changed during its read.
     if(memo?.value===value&&before===prefix()&&this.viewSnapshots.put(date,key(memo.resources,memo.counters),value,token)){
       this.releaseViewRaw(date);
     }
-    return {value,token};
+    return {value,token:persistedKey?`r-${persistedKey}`:token};
   }
   private billingReports?:BillingReports;
   billingReportProgress(id:string){return this.billingReports?.progress(id)||null;}
