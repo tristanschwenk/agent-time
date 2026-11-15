@@ -10,7 +10,7 @@ import {openEventDatabase,isPackedEventDatabase} from './event-database.ts';
 import {BillingStore,billingProjectForSource} from './billing-store.ts';
 import {calculateBilling,renderBillingExport} from './billing-engine.ts';
 import {billingDateRange,billingDayStart,billingLocalDate,validateBillingDate,nextBillingDate} from './billing-calendar.ts';
-import {snapshot,agentFilteredIntervals,attributedIntervals,coverage,timeForProjectSet,snapshotSettings,type Snapshot} from '../mcp/data.ts';
+import {snapshot,agentFilteredIntervals,attributedIntervals,coverage,timeForProjectSet,snapshotSettings,persistedBillingSnapshotKey,billingProjection,type Snapshot} from '../mcp/data.ts';
 import {agentSessionKey} from './session-identity.ts';
 import type {BillingProject,BillingReport,BillingDayInput,BillingSpan,BillingHistoryRequest,BillingHistoryReply} from './billing-types.ts';
 import type {CaptureEvent} from './events.ts';
@@ -65,7 +65,21 @@ function plainDecimal(value:number):string{
  const text=String(value);if(!/[eE]/.test(text))return text;const [coefficient,exponent]=text.toLowerCase().split('e'),[integer,fraction='']=coefficient!.split('.'),digits=integer!+fraction,point=integer!.length+Number(exponent);
  return point<=0?'0.'+'0'.repeat(-point)+digits:point>=digits.length?digits+'0'.repeat(point-digits.length):digits.slice(0,point)+'.'+digits.slice(point);
 }
+/** Final billing input is much smaller than a proof-rich Snapshot. Persist only
+ * completed days; source signatures and project ownership are still verified. */
 function dayInput(output:string,db:DatabaseSync,project:BillingProject,projects:BillingProject[],date:string,settings:ReturnType<typeof snapshotSettings>,asOf:number):BillingDayInput{
+ const start=billingDayStart(date,project.timezone),end=billingDayStart(nextBillingDate(date),project.timezone);
+ const key=()=>{const source=end<=asOf?persistedBillingSnapshotKey(db,start,end,{...settings,countTaskCounters:false}):undefined;return source?createHash('sha256').update(JSON.stringify([1,source,project,projects])).digest('hex'):undefined;};
+ const signature=key();if(!signature)return computeDayInput(output,db,project,projects,date,settings,asOf);
+ const projection=billingProjection(output),cacheDate=JSON.stringify([project.id,date,start,end]);
+ try{
+  const cached=projection.getView<BillingDayInput>('billing-input',cacheDate,signature);if(cached)return cached;
+  const value=computeDayInput(output,db,project,projects,date,settings,asOf);
+  if(signature===key())projection.putView('billing-input',cacheDate,signature,value);
+  return value;
+ }finally{projection.close();}
+}
+function computeDayInput(output:string,db:DatabaseSync,project:BillingProject,projects:BillingProject[],date:string,settings:ReturnType<typeof snapshotSettings>,asOf:number):BillingDayInput{
  const start=billingDayStart(date,project.timezone),end=Math.min(billingDayStart(nextBillingDate(date),project.timezone),asOf);
  const data=snapshot(output,start,end,{countTaskCounters:false,billingEvidence:true,persistedOnly:true,database:db,settings});const spans:BillingSpan[]=[];
  let attributionConflict=false;

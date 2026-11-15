@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
-import {summarize} from '../../src/capture/correlate.ts';
-import {createLiveSummary,appendLiveSummary} from '../../src/capture/incremental-summary.ts';
-import type {CaptureEvent} from '../../src/capture/events.ts';
+import {summarize} from '../src/capture/correlate.ts';
+import {createLiveSummary,appendLiveSummary} from '../src/capture/incremental-summary.ts';
+import type {CaptureEvent} from '../src/capture/events.ts';
 const options={idleThreshold:300,agentIdleThreshold:300};
 const sample=(at:number):CaptureEvent=>({eventId:`e${at}`,observedAt:at,monotonicAt:at,collectorEpoch:'epoch',kind:'activity',source:'macos',data:{idleSeconds:0,foregroundBundleId:'editor'}});
 const events=Array.from({length:12000},(_,i)=>sample(i*5+1));

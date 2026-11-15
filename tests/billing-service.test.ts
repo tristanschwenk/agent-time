@@ -163,3 +163,19 @@ test('history rejects unrelated fields, invalid cursor and unbounded page sizes'
  for(const input of [{project:''},{project:'x',limit:0},{project:'x',limit:51},{project:'x',limit:1.5},{project:'x',cursor:'1'},{project:'x',historyCursor:'0'},{project:'x',historyCursor:'9007199254740992'},{project:'x',historyCursor:'../1'}])assert.throws(()=>validateBillingHistoryRequest(input));
  assert.deepEqual(validateBillingHistoryRequest({project:'x',historyCursor:'12',limit:50}),{project:'x',historyCursor:'12',limit:50});
 });
+
+import{DatabaseSync}from'node:sqlite';
+test('closed billing inputs persist compactly and skip full snapshots after restart while edits invalidate',()=>{
+ const {output,store}=fixture(),at=billingDayStart('2026-10-20','Europe/Paris')+36000;
+ try{
+  store.put(makeEvent('hook','tool_start',{eventId:'tool-start',provider:'claude',hostId:'local',sessionId:'one',cwd:'/fixture/caex',observedAt:at,data:{toolId:'t'}}));
+  store.put(makeEvent('hook','tool_end',{eventId:'tool-end',provider:'claude',hostId:'local',sessionId:'one',cwd:'/fixture/caex',observedAt:at+60,data:{toolId:'t'}}));
+  store.projectionSignature({readFrom:at-86400,readTo:at+86400,activityFrom:at-60,activityTo:at+60});
+  const request={project:'caex',fromDate:'2026-10-20',toDate:'2026-10-20',detail:'daily' as const},first=billingForProject(output,request);
+  let payloadReads=0,fullSnapshotReads=0;const prepare=DatabaseSync.prototype.prepare;
+  DatabaseSync.prototype.prepare=function(sql:string){if(/SELECT (?:payload|payload_data) FROM events/.test(sql))payloadReads++;const statement=prepare.call(this,sql);if(sql.includes('SELECT data,digest FROM views')){const get=statement.get.bind(statement);statement.get=(...args:any[])=>{if(args[0]==='billing')fullSnapshotReads++;return get(...args);};}return statement;};
+  try{assert.deepEqual(JSON.parse(JSON.stringify(billingForProject(output,request))),JSON.parse(JSON.stringify(first)));assert.equal(payloadReads,0);assert.equal(fullSnapshotReads,0,'warm billing must use its compact day input, not deserialize full snapshots');}finally{DatabaseSync.prototype.prepare=prepare;}
+  store.database.prepare('UPDATE events SET observed_at=?,payload_data=? WHERE event_id=?').run(at+120,JSON.stringify(makeEvent('hook','tool_end',{eventId:'tool-end',provider:'claude',hostId:'local',sessionId:'one',cwd:'/fixture/caex',observedAt:at+120,data:{toolId:'t'}})),'tool-end');
+  const changed=billingForProject(output,request);assert.notEqual(changed.report.totals.agentRunningSeconds,first.report.totals.agentRunningSeconds);
+ }finally{store.close();rmSync(output,{recursive:true,force:true});}
+});

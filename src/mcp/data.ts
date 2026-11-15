@@ -81,6 +81,24 @@ function chunks(from:number,to:number):Array<[number,number]>{
  }
  return result;
 }
+/** Complete source signature read through the caller's pinned evidence transaction. */
+export function persistedBillingSnapshotKey(db:DatabaseSync,from:number,to:number,options:ReturnType<typeof snapshotSettings>):string|undefined{
+ if(options.countTaskCounters||to>now())return;
+ try{
+    const stamp=db.prepare('SELECT identity,revision FROM at_projection_revision WHERE id=1').get();if(!stamp)return;
+    const evidence=chunks(from,to).map(([start,end])=>evidenceWindowRevision(db,windowBounds(start,end,options.agentIdleThreshold)));
+    const oldest=db.prepare('SELECT observed_at FROM events ORDER BY observed_at LIMIT 1').get();
+    const path=String(db.prepare('PRAGMA database_list').all().find(row=>row.name==='main')?.file||'');if(!path)return;
+    const file=statSync(path),identity=[file.dev,file.ino,file.birthtimeMs];
+    return createHash('sha256').update(JSON.stringify([2,identity,stamp,evidence,oldest,from,to,chunks(from,to),options,dependencyRevision(db,'review'),dependencyRevision(db,'resources'),dependencyRevision(db,'reports')])).digest('hex');
+   }catch{return;}
+}
+export function billingProjection(output:string):PeriodProjection{
+ return new PeriodProjection(join(output,'derived-periods.sqlite'),64*1024*1024,bytes=>{
+  let limit=DEFAULT_STORAGE_LIMIT_MB;try{const stored=Number(JSON.parse(readFileSync(join(output,'settings.json'),'utf8')).storageLimitMB);if(Number.isFinite(stored)&&stored>0)limit=stored;}catch{}
+  const usage=quickStorageUsage(output);return !usage.truncated&&usage.managedBytes+bytes<limit*1024*1024*.9;
+ });
+}
 /**
  * Summarize [from,to) one local day at a time. Each day reads agent evidence
  * from a day plus the agent idle threshold before and after it (long turns and
@@ -94,24 +112,9 @@ export function snapshot(output:string,from:number,to:number,readOptions:{countT
  try{
   if(ownTransaction)db.exec('BEGIN');
   const options={...(readOptions.settings||snapshotSettings(output)),...(readOptions.countTaskCounters!==undefined?{countTaskCounters:readOptions.countTaskCounters}:{})},pending=readOptions.persistedOnly?[]:pendingReports(output);
-  // Read the durable stamp through this exact connection, including a caller's
-  // pinned read transaction. Never create schema or revise source evidence here.
-  const projectionKey=()=>{
-   if(readOptions.bypassProjection||!readOptions.billingEvidence||!readOptions.persistedOnly||options.countTaskCounters||to>now())return;
-   try{
-    const stamp=db.prepare('SELECT identity,revision FROM at_projection_revision WHERE id=1').get();if(!stamp)return;
-    const evidence=chunks(from,to).map(([start,end])=>evidenceWindowRevision(db,windowBounds(start,end,options.agentIdleThreshold)));
-    const oldest=db.prepare('SELECT observed_at FROM events ORDER BY observed_at LIMIT 1').get();
-    const path=String(db.prepare('PRAGMA database_list').all().find(row=>row.name==='main')?.file||'');if(!path)return;
-    const file=statSync(path),identity=[file.dev,file.ino,file.birthtimeMs];
-    return createHash('sha256').update(JSON.stringify([2,identity,stamp,evidence,oldest,from,to,chunks(from,to),options,dependencyRevision(db,'review'),dependencyRevision(db,'resources'),dependencyRevision(db,'reports')])).digest('hex');
-   }catch{return;}
-  };
+  const projectionKey=()=>readOptions.bypassProjection||!readOptions.billingEvidence||!readOptions.persistedOnly?undefined:persistedBillingSnapshotKey(db,from,to,options);
   const cacheKey=projectionKey(),cacheDate=JSON.stringify([from,to,chunks(from,to),options]);
-  if(cacheKey){projection=new PeriodProjection(join(output,'derived-periods.sqlite'),64*1024*1024,bytes=>{
-   let limit=DEFAULT_STORAGE_LIMIT_MB;try{const stored=Number(JSON.parse(readFileSync(join(output,'settings.json'),'utf8')).storageLimitMB);if(Number.isFinite(stored)&&stored>0)limit=stored;}catch{}
-   const usage=quickStorageUsage(output);return !usage.truncated&&usage.managedBytes+bytes<limit*1024*1024*.9;
-  });const hit=projection.getView<Snapshot>('billing',cacheDate,cacheKey);if(hit)return hit;}
+  if(cacheKey){projection=billingProjection(output);const hit=projection.getView<Snapshot>('billing',cacheDate,cacheKey);if(hit)return hit;}
   const decisions=db.prepare('SELECT start_event_id,end_event_id,mode,project_path FROM human_decisions').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),mode:row.mode,projectPath:row.project_path===null?null:String(row.project_path)})) as HumanDecision[];
   const splits=db.prepare('SELECT start_event_id,end_event_id,split_at,before_path,after_path FROM human_splits').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),splitAt:Number(row.split_at),beforePath:row.before_path===null?null:String(row.before_path),afterPath:row.after_path===null?null:String(row.after_path)})) as HumanSplit[];
   const resourceFrom=readOptions.billingEvidence?from-31*86400:now()-31*86400,resourceTo=readOptions.billingEvidence?to+31*86400:Infinity;

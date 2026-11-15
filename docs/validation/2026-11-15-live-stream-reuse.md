@@ -18,6 +18,6 @@ Verification:
 - Existing live computation-count regression now uses today's date: historical raw eviction from lot 1 intentionally makes the old 1970 fixture unsuitable for testing the live path.
 - Typecheck passed.
 
-Synthetic benchmark (same frozen in-memory evidence, 15 iterations, median; complete output equality asserted): 12,000 human samples + 200 hooks, one appended hook. Full summarize 7.91 ms; stream append 3.00 ms (2.64x). Retained source payloads: 201 (200 non-activity plus last sample). This isolates reducer CPU; no claims about storage/decode I/O timing. Reproduce with `node .capture/reading-model-lots/task3-benchmark.ts`.
+Synthetic benchmark (same frozen in-memory evidence, 15 iterations, median; complete output equality asserted): 12,000 human samples + 200 hooks, one appended hook. Full summarize 7.91 ms; stream append 3.00 ms (2.64x). Retained source payloads: 201 (200 non-activity plus last sample). This isolates reducer CPU; no claims about storage/decode I/O timing. Reproduce with `node scripts/benchmark-live-summary.ts`.
 
 No source evidence, user database, release or remote changes. Broader resumable agent reduction remains outside this proven seam.
