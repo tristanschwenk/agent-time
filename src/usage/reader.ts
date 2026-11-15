@@ -147,6 +147,12 @@ export class UsageReader{
   if(this.capturedLoaded)return;this.capturedLoaded=true;
   try{
    if(!(this.db.prepare('PRAGMA table_info(events)').all() as Array<{name:string}>).some(column=>column.name==='event_id'))this.eventId="''";
+   // LIMIT bounds returned hooks, not rows inspected. Keep an ordered, hook-only
+   // index so macOS-only tails (including histories with no hooks) are never rescanned.
+   // Separate names survive legacy-to-packed upgrades that recreate existing indexes.
+   const source=isPackedEventDatabase(this.db)?'source':"json_extract(payload,'$.source')";
+   const hookIndex=isPackedEventDatabase(this.db)?'events_usage_hooks_packed':'events_usage_hooks_legacy';
+   this.db.exec(`CREATE INDEX IF NOT EXISTS ${hookIndex} ON events(${source}) WHERE ${source}='hook'`);
    this.db.exec('CREATE TABLE IF NOT EXISTS usage_captured_sessions (key TEXT PRIMARY KEY, first REAL NOT NULL); CREATE TABLE IF NOT EXISTS usage_captured_state (id INTEGER PRIMARY KEY CHECK (id=1), last_rowid INTEGER NOT NULL, last_event_id TEXT NOT NULL, covered INTEGER NOT NULL)');
    const state=this.db.prepare('SELECT last_rowid,last_event_id,covered FROM usage_captured_state WHERE id=1').get() as {last_rowid:number;last_event_id:string;covered:number}|undefined;
    const valid=state&&(this.db.prepare(`SELECT ${this.eventId} event_id FROM events WHERE rowid=?`).get(state.last_rowid) as {event_id:string}|undefined)?.event_id===state.last_event_id
