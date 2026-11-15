@@ -44,3 +44,22 @@ test('checkpoint frees the write-ahead log without changing captured events',()=
 });
 
 test('derived periods count toward displayed and managed disk usage',async()=>{const{quickStorageUsage}=await import('../src/capture/storage-policy.ts');const root=mkdtempSync(join(tmpdir(),'at-derived-size-'));try{writeFileSync(join(root,'derived-periods.sqlite'),'x'.repeat(123));const report=storageUsage(root);assert.equal(report.derived?.bytes,123);assert.equal(report.totalBytes,123);assert.equal(quickStorageUsage(root).managedBytes,123);}finally{rmSync(root,{recursive:true,force:true});}});
+
+test('billing exports are accounted exactly once in both measures and retained unchanged',async()=>{
+ const {quickStorageUsage}=await import('../src/capture/storage-policy.ts');const {readFileSync}=await import('node:fs');
+ const root=mkdtempSync(join(tmpdir(),'at-billing-export-size-'));try{
+  mkdirSync(join(root,'exports'));writeFileSync(join(root,'exports','backup.sqlite'),'b'.repeat(29));
+  mkdirSync(join(root,'billing-exports','nested'),{recursive:true});
+  const files=[['report.csv','c'.repeat(123)],['nested/report.md','m'.repeat(456)]];
+  for(const [name,data] of files)writeFileSync(join(root,'billing-exports',name),data);
+  symlinkSync(join(root,'exports'),join(root,'billing-exports','linked-backup'));
+  const report=storageUsage(root);assert.equal(report.exports.bytes,608);assert.equal(report.exports.files,3);assert.equal(report.totalBytes,608);assert.equal(quickStorageUsage(root).managedBytes,608);
+  for(const [name,data] of files)assert.equal(readFileSync(join(root,'billing-exports',name),'utf8'),data);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+test('billing export directory links are excluded from fast and detailed accounting',async()=>{
+ const {quickStorageUsage}=await import('../src/capture/storage-policy.ts');const root=mkdtempSync(join(tmpdir(),'at-billing-export-link-'));try{
+  mkdirSync(join(root,'external'));writeFileSync(join(root,'external','report.csv'),'x'.repeat(123));symlinkSync(join(root,'external'),join(root,'billing-exports'));
+  assert.equal(storageUsage(root).exports.bytes,0);assert.equal(storageUsage(root).totalBytes,0);assert.equal(quickStorageUsage(root).managedBytes,0);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});

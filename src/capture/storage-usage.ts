@@ -2,12 +2,13 @@ import {openEventDatabase,isPackedEventDatabase,eventStorageStats} from './event
 import {DatabaseSync} from 'node:sqlite';
 import {lstatSync,opendirSync,statfsSync} from 'node:fs';
 import {join} from 'node:path';
+import type {StoragePressureNotice} from './storage-pressure-status.ts';
 
 export interface StorageSize {bytes:number;files:number;truncated:boolean;}
 export interface StorageUsage {
  derived?:StorageSize;database:StorageSize;wal:StorageSize;sharedMemory:StorageSize;indexes:StorageSize;
  spool:StorageSize;runtimes:StorageSize;exports:StorageSize;
- history?:ReturnType<typeof eventStorageStats>&{efficient:boolean};storageLimitMB?:number;care?:{at:number|null;error:string|null;paused:boolean};
+ history?:ReturnType<typeof eventStorageStats>&{efficient:boolean};storageLimitMB?:number;care?:{at:number|null;error:string|null;paused:boolean;pressure?:StoragePressureNotice};
  totalBytes:number;eventCount:number;freeBytes:number|null;
  byDay:Array<{date:string;source:string;events:number;payloadBytes:number}>;
 }
@@ -18,6 +19,7 @@ function fileSize(path:string):StorageSize{
 }
 function directorySize(path:string,maxEntries=100_000):StorageSize{
  const result=empty(),stack=[path];let visited=0;
+ try{if(!lstatSync(path).isDirectory())return result;}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return result;throw error;}
  while(stack.length){
   const next=stack.pop()!;
   let directory;
@@ -36,7 +38,8 @@ export function storageUsage(root:string,now=Date.now()/1000):StorageUsage{
  const database=fileSize(join(root,'events.sqlite')),wal=fileSize(join(root,'events.sqlite-wal'));
  const sharedMemory=fileSize(join(root,'events.sqlite-shm'));
  const spool=directorySize(join(root,'spool')),runtimes=directorySize(join(root,'hook-runtime'));
- const exports=directorySize(join(root,'exports'));
+ const exports=directorySize(join(root,'exports')),billingExports=directorySize(join(root,'billing-exports'));
+ exports.bytes+=billingExports.bytes;exports.files+=billingExports.files;exports.truncated ||= billingExports.truncated;
  const derived=empty();for(const name of ['ingestion.sqlite','ingestion.sqlite-journal','ingestion.sqlite-wal','ingestion.sqlite-shm','derived-periods.sqlite','derived-periods.sqlite-journal','derived-periods.sqlite-wal','derived-periods.sqlite-shm']){const item=fileSize(join(root,name));derived.bytes+=item.bytes;derived.files+=item.files;}
  const indexes=empty();
  let freeBytes:number|null=null;

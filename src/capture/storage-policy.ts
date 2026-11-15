@@ -12,7 +12,7 @@ export function quickStorageUsage(root:string):{managedBytes:number;freeBytes:nu
   if(info.isSymbolicLink())return;if(info.isFile()){managedBytes+=info.size;return;}if(!info.isDirectory())return;
   const dir=opendirSync(path);try{let child;while((child=dir.readSync())){if(++entries>100000){truncated=true;return;}walk(join(path,child.name));if(truncated)return;}}finally{dir.closeSync();}
  };
- for(const name of ['ingestion.sqlite','ingestion.sqlite-journal','ingestion.sqlite-wal','ingestion.sqlite-shm','derived-periods.sqlite','derived-periods.sqlite-journal','derived-periods.sqlite-wal','derived-periods.sqlite-shm','events.sqlite','events.sqlite-wal','events.sqlite-shm','spool','hook-runtime','exports'])walk(join(root,name));
+ for(const name of ['ingestion.sqlite','ingestion.sqlite-journal','ingestion.sqlite-wal','ingestion.sqlite-shm','derived-periods.sqlite','derived-periods.sqlite-journal','derived-periods.sqlite-wal','derived-periods.sqlite-shm','events.sqlite','events.sqlite-wal','events.sqlite-shm','spool','hook-runtime','exports','billing-exports'])walk(join(root,name));
  let freeBytes:number|null=null;try{const fs=statfsSync(root);freeBytes=Number(fs.bavail)*Number(fs.bsize);}catch{/* Capacity unknown: budget still applies. */}
  return {managedBytes,freeBytes,truncated};
 }

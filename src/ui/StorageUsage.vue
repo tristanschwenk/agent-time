@@ -14,6 +14,7 @@ import type { StorageUsage } from '../capture/storage-usage.ts';
 import { humanizeError } from './errors.ts';
 import { bytes as size } from './format.ts';
 import {storageProjection} from './storage-presentation.ts';
+import {storagePressureDetail} from '../capture/storage-pressure-status.ts';
 import { toast } from './toast.ts';
 const props=defineProps<{ running: boolean;limit?:number }>();
 const emit=defineEmits<{change:[settings:{storageLimitMB:number}]} >();
@@ -31,7 +32,7 @@ const parts = computed(() => {
   return [
     { name: 'Your history', detail: 'Recorded activity, sessions and reviews', bytes: u.database.bytes + u.wal.bytes + u.sharedMemory.bytes, color: 'var(--agent-chart)' },
     { name: 'Calculated periods', detail: 'Rebuildable cache, limited in size', bytes: u.derived?.bytes||0, color: 'var(--muted)' },
-    { name: 'Backups', detail: 'Copies kept from earlier storage upgrades', bytes: u.exports.bytes, color: 'var(--human-chart)' },
+    { name: 'Backups and exports', detail: 'Storage upgrade copies and saved billing reports', bytes: u.exports.bytes, color: 'var(--human-chart)' },
     { name: 'Agent connections', detail: 'Hook helpers and events waiting to be saved', bytes: u.runtimes.bytes + u.spool.bytes, color: 'var(--status-good)' },
   ];
 });
@@ -39,6 +40,17 @@ const budgetBytes = computed(() => ((props.limit ?? usage.value?.storageLimitMB 
 const scale = computed(() => Math.max(budgetBytes.value, usage.value?.totalBytes || 0, 1));
 const overBudget = computed(() => (usage.value?.totalBytes || 0) > budgetBytes.value);
 const diskLow = computed(() => usage.value?.freeBytes !== null && usage.value?.freeBytes !== undefined && usage.value.freeBytes < 2 * 1024 ** 3);
+const pauseMessage = computed(() => {
+  const u=usage.value;
+  if(!u?.care?.paused)return '';
+  const pressure=u.care.pressure;
+  const recovery=pressure?.autoResume?' Capture restarts automatically when space and your storage budget allow.':' Resume capture when you are ready.';
+  if(u.freeBytes!==null&&u.freeBytes<1024**3)return 'Your Mac is almost out of space. Capture is paused to keep 1 GB free.'+(pressure?.phase==='queued'||pressure?.phase==='compressing'?' Stored history is being compressed automatically.':'')+recovery;
+  if([u.database,u.wal,u.sharedMemory,u.derived,u.spool,u.runtimes,u.exports].some(part=>part?.truncated))return 'Capture is paused because the storage measurement is incomplete. Refresh to check capacity again before resuming.';
+  if(u.totalBytes>=budgetBytes.value)return 'Capture is paused to stay within your limit. Raise the limit or delete a backup you no longer need.';
+  if(u.freeBytes===null)return 'Capture is paused while available disk space cannot be measured. Refresh to check capacity again.'+(pressure?recovery:'');
+  return pressure?storagePressureDetail(pressure):'Capture is paused while storage capacity is checked. Refresh before resuming.';
+});
 const forecast=computed(()=>storageProjection(usage.value?.byDay||[],usage.value?.history));
 async function refresh() {
   busy.value = true;
@@ -126,9 +138,7 @@ onMounted(() => {
         <span v-for="part in parts" :key="part.name"><i :style="{ background: part.color }"></i>{{ part.name }}</span>
       </div>
 
-      <p v-if="usage.care?.paused" class="storage-error">
-        Capture is paused to stay within your limit. Raise the limit or delete a backup you no longer need.
-      </p>
+      <p v-if="pauseMessage" class="storage-error">{{ pauseMessage }}</p>
       <p v-else-if="overBudget" class="storage-error">
         Over your limit. Capture pauses if Agent Time cannot compress enough; raise the limit or delete a backup.
       </p>
