@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0-beta.58",
+  "source": "6f6b83535ae97a1d8a210d2f777247914fa7ab04",
+  "artifacts": {
+    "archive": {
+      "bytes": 55846957,
+      "sha256": "7c7f7e709fef0a74f122d3ec4313413de10b796de0de78e4d7f65ac258374d0f",
+      "url": "https://agent-time.ezyostudio.com/beta/0.2.0-beta.58/Agent%20Time.app.tar.gz"
+    },
+    "dmg": {
+      "bytes": 55640972,
+      "sha256": "d5a62f3d0801a2fb562d554f93fc167f84552b0045bfb26d9849ffa2cedede80",
+      "url": "https://agent-time.ezyostudio.com/install/0.2.0-beta.58/Agent%20Time_0.2.0-beta.58_aarch64.dmg"
+    }
+  },
+  "signatureMatches": true,
+  "landingVersionMatches": true,
+  "workflow": {
+    "id": 43741298000,
+    "url": "https://github.com/zaosoula/agent-time/actions/runs/43741298000",
+    "jobs": [
+      {
+        "name": "build",
+        "conclusion": "success"
+      },
+      {
+        "name": "check",
+        "conclusion": "success"
+      },
+      {
+        "name": "publish",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "checks": {
+    "javascriptTests": 785,
+    "nativeTests": 36,
+    "productionVulnerabilities": 0,
+    "packagedRuntimeTests": 139,
+    "packagedSourceModules": 100,
+    "strictSignature": true,
+    "appStaple": true,
+    "dmgStaple": true,
+    "appGatekeeper": true,
+    "dmgGatekeeper": true
+  },
+  "installedOnOwnerMac": false
+}
