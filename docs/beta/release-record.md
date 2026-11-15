@@ -1,5 +1,12 @@
 # Agent Time public beta release record
 
+## 0.2.0-beta.59 — prepared locally, not published — 2026-11-16
+
+Prepared after the requested eleven storage/data corrections and fresh independent reviews. Includes visible historical-preparation progress from fdc0622 and the archive native-picker follow-up through c36ca0c. Existing proof events and timing/billing formulas remain unchanged. Final validation passed 830 JavaScript tests, 38 native tests, production typecheck/build and an exact-byte archive-helper smoke using packaged Node. All 100 packaged capture/usage/MCP modules match source. Paired measurements isolate reduced background registration/polling work; no RAM reduction is claimed. See [validation and limitations](../validation/2026-11-16-storage-audit-fixes.md) and [candidate notes](0.2.0-beta.59-notes.md).
+
+No publication workflow was dispatched, no updater/feed changed and no signed/notarized beta.59 package is claimed. This is a local candidate awaiting the separate publication step.
+
+
 ## 0.2.0-beta.58 — ingestion and persistent credited periods
 
 Owner requested publication on 2026-11-15. Includes ingestion-time tool reconciliation, transactional mutation/review tracking, persistent dependency-scoped credited periods, background resumable preparation, compact Home responses and validated daily/report reading models. Source proofs and existing timing/billing rules remain authoritative. First-report equality, original proof digests, targeted rebuilds and storage bounds are recorded in [the validation report](../validation/2026-11-15-ingestion-periods.md). Initial history preparation is separate from report latency; a local 30-day first-report comparison measured 43.64 s to 136 ms and 1070.25 to 135.89 MiB peak report RSS.

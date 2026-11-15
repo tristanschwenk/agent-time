@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-16",
+  "baseline": "fdc0622b2a2e36d504427c64ee5a9a503ee29ff5",
+  "reviewedSource": "c36ca0c5420a2517c3165746c5bed9d80ba30e83",
+  "closedFindings": [
+    "A01",
+    "A02",
+    "A06",
+    "A07",
+    "A08",
+    "A09",
+    "A03",
+    "A04",
+    "A05",
+    "A10",
+    "A11"
+  ],
+  "tests": {
+    "javascript": 830,
+    "native": 38,
+    "build": "passed",
+    "packagedSourceModules": 100,
+    "packagedArchiveHelper": "passed synthetic exact-byte smoke"
+  },
+  "independentReviews": {
+    "storage": "no confirmed blocker, final native helper reviewed at c36ca0c",
+    "data": "no blocker, final bounded registration reviewed at 1d23a99"
+  },
+  "performance": {
+    "registrationIdleMs": {
+      "before": [
+        1076.52,
+        1063.21,
+        1080.86
+      ],
+      "after": [
+        8.9,
+        9.39,
+        8.32
+      ]
+    },
+    "initialDateRegistrationMs": {
+      "before": 8204.95,
+      "after": 1685.09,
+      "batches": 86,
+      "maxBatchMs": 34.12
+    },
+    "registrationPeakRssMiB": {
+      "before": 132.77,
+      "after": 135.97
+    },
+    "hookWarmPollMs": {
+      "beforeRange": [
+        6.24,
+        7.14
+      ],
+      "afterRange": [
+        0.032,
+        0.053
+      ]
+    }
+  },
+  "limitations": [
+    "Synthetic operation-specific benchmarks, not end-to-end UI measurements",
+    "No RAM reduction established",
+    "One-time hook index scan remains",
+    "Legacy unowned temporary files preserved and reported",
+    "Earlier native restart timing flake; serialized and final normal reruns passed",
+    "No signed/notarized app or customer installation claimed"
+  ],
+  "candidate": "0.2.0-beta.59",
+  "published": false,
+  "candidateChecks": {
+    "versionAgreement": "passed",
+    "releaseRegressionTests": 22,
+    "productionBuild": "passed after version bump",
+    "sidecarsAndWidget": "prepared locally for beta.59"
+  }
+}
