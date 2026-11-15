@@ -72,3 +72,12 @@ test('the explicit local execution host is compatible and unrelated hosts stay r
  assert.equal(resolveProjectPath(first,{hostId:'local-execution-uuid'}),main);
  assert.equal(resolveProjectPath(first,{hostId:'different-execution-uuid'}),first);
 });
+
+import{withProjectPaths,validProjectPaths}from'../src/capture/project-path.ts';
+test('derived path dependencies are nested, bounded and restored after an exception',()=>{
+ const a='/__agent_time_missing_path_a__',b='/__agent_time_missing_path_b__';
+ const outer=withProjectPaths(()=>{resolveProjectPath(a);const inner=withProjectPaths(()=>resolveProjectPath(b));assert.equal(inner.paths?.length,1);assert.throws(()=>withProjectPaths(()=>{throw Error('stop');}));resolveProjectPath(a);return 42;});
+ assert.equal(outer.value,42);assert.equal(outer.paths?.length,2);assert(validProjectPaths(outer.paths));assert.equal(validProjectPaths(undefined),false);
+ const capped=withProjectPaths(()=>{for(let n=0;n<8193;n++)resolveProjectPath(`/__agent_time_missing_${n}__`);});assert.equal(capped.paths,undefined);
+ assert.equal(withProjectPaths(()=>resolveProjectPath(a)).paths?.length,1);
+});

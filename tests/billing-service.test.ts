@@ -179,3 +179,15 @@ test('closed billing inputs persist compactly and skip full snapshots after rest
   const changed=billingForProject(output,request);assert.notEqual(changed.report.totals.agentRunningSeconds,first.report.totals.agentRunningSeconds);
  }finally{store.close();rmSync(output,{recursive:true,force:true});}
 });
+
+test('compact billing revalidates linked-worktree resolution after filesystem-only changes',async()=>{
+ const{mkdirSync,writeFileSync}=await import('node:fs');const{output,store}=fixture(),main=join(output,'main'),linked=join(output,'linked'),metadata=join(main,'.git','worktrees','linked');
+ try{
+  mkdirSync(metadata,{recursive:true});mkdirSync(linked);writeFileSync(join(linked,'.git'),`gitdir: ${metadata}\n`);writeFileSync(join(metadata,'commondir'),'../..\n');
+  const billing=new BillingStore(store.database),saved=billing.resolveProject('caex');billing.saveProject({...saved,sources:{...saved.sources,repositories:[main]}},saved.revision);
+  const at=billingDayStart('2026-10-20','Europe/Paris')+36000,who={provider:'claude',hostId:'local',sessionId:'linked',cwd:linked,workspaceId:'local::'+linked};
+  store.put(makeEvent('hook','tool_start',{...who,eventId:'linked-start',observedAt:at,data:{toolId:'t'}}));store.put(makeEvent('hook','tool_end',{...who,eventId:'linked-end',observedAt:at+60,data:{toolId:'t'}}));store.projectionSignature({readFrom:at-86400,readTo:at+86400,activityFrom:at-60,activityTo:at+60});
+  const request={project:'caex',fromDate:'2026-10-20',toDate:'2026-10-20',detail:'daily' as const};assert.equal(billingForProject(output,request).report.totals.agentRunningSeconds,60);
+  rmSync(linked,{recursive:true,force:true});assert.equal(billingForProject(output,request).report.totals.agentRunningSeconds,0);
+ }finally{store.close();rmSync(output,{recursive:true,force:true});}
+});

@@ -1,7 +1,7 @@
 import {MAX_AGENT_REPORT_BYTES,applyWorkAttributes,validateAttributes,validateAgentIdentity,eventWorkMetadata} from '../capture/work-context.ts';
 import {PeriodTimeCredits} from './time-credit.ts';
 import {metadataResolver,matchesAgent,hasAgentFilter,type AgentFilter} from './work-metadata.ts';
-import {resolveProjectPath} from '../capture/project-path.ts';
+import {resolveProjectPath,collectProjectPaths,validProjectPaths,type ProjectPathDependency} from '../capture/project-path.ts';
 import {boundedSpoolListing,MAX_PENDING_HOOKS,MAX_HOOK_BYTES} from '../capture/hooks.ts';
 import {openEventDatabase,isPackedEventDatabase} from '../capture/event-database.ts';
 import {DatabaseSync} from 'node:sqlite';
@@ -108,13 +108,14 @@ export function billingProjection(output:string):PeriodProjection{
 export function snapshot(output:string,from:number,to:number,readOptions:{countTaskCounters?:boolean;billingEvidence?:boolean;persistedOnly?:boolean;database?:DatabaseSync;settings?:ReturnType<typeof snapshotSettings>;bypassProjection?:boolean}={}):Snapshot{
  if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from||to-from>31*86400)throw new Error('Invalid bounded time range');
  const db=readOptions.database||database(output),ownTransaction=!db.isTransaction;
- let projection:PeriodProjection|undefined;
+ let projection:PeriodProjection|undefined,pathCapture:ReturnType<typeof collectProjectPaths>|undefined;
  try{
   if(ownTransaction)db.exec('BEGIN');
   const options={...(readOptions.settings||snapshotSettings(output)),...(readOptions.countTaskCounters!==undefined?{countTaskCounters:readOptions.countTaskCounters}:{})},pending=readOptions.persistedOnly?[]:pendingReports(output);
   const projectionKey=()=>readOptions.bypassProjection||!readOptions.billingEvidence||!readOptions.persistedOnly?undefined:persistedBillingSnapshotKey(db,from,to,options);
   const cacheKey=projectionKey(),cacheDate=JSON.stringify([from,to,chunks(from,to),options]);
-  if(cacheKey){projection=billingProjection(output);const hit=projection.getView<Snapshot>('billing',cacheDate,cacheKey);if(hit)return hit;}
+  if(cacheKey){projection=billingProjection(output);const hit=projection.getView<{value:Snapshot;paths:ProjectPathDependency[]}>('billing',cacheDate,cacheKey);if(hit?.value&&validProjectPaths(hit.paths))return hit.value;}
+  pathCapture=collectProjectPaths();
   const decisions=db.prepare('SELECT start_event_id,end_event_id,mode,project_path FROM human_decisions').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),mode:row.mode,projectPath:row.project_path===null?null:String(row.project_path)})) as HumanDecision[];
   const splits=db.prepare('SELECT start_event_id,end_event_id,split_at,before_path,after_path FROM human_splits').all().map(row=>({startEventId:String(row.start_event_id),endEventId:String(row.end_event_id),splitAt:Number(row.split_at),beforePath:row.before_path===null?null:String(row.before_path),afterPath:row.after_path===null?null:String(row.after_path)})) as HumanSplit[];
   const resourceFrom=readOptions.billingEvidence?from-31*86400:now()-31*86400,resourceTo=readOptions.billingEvidence?to+31*86400:Infinity;
@@ -216,9 +217,9 @@ export function snapshot(output:string,from:number,to:number,readOptions:{countT
   const summary:Summary={intervals,coverage,unresolved,sessions:[...sessions.values()],humanSeconds:measured.humanActiveSeconds,agentSeconds:measured.agentRunningSeconds,agentWallSeconds:measured.agentWallSeconds,childAgentSeconds:[...byChild.values()].reduce((sum,group)=>sum+minuteCreditSeconds(group),0),elapsedSeconds:measured.overlapMergedWallSeconds};
   const truncatedBefore=Boolean(db.prepare('SELECT 1 AS found FROM events WHERE observed_at<? LIMIT 1').get(readFrom));
   const result={summary,events:[...kept.values()].sort((a,b)=>a.observedAt-b.observedAt),from,to,truncatedBefore,metadataTruncated,firstSeen};
-  if(cacheKey&&cacheKey===projectionKey())projection?.putView('billing',cacheDate,cacheKey,result);
+  const paths=pathCapture.paths;if(paths&&cacheKey&&cacheKey===projectionKey())projection?.putView('billing',cacheDate,cacheKey,{value:result,paths});
   return result;
- }finally{projection?.close();if(ownTransaction&&db.isTransaction)db.exec('ROLLBACK');if(!readOptions.database)db.close();}
+ }finally{pathCapture?.close();projection?.close();if(ownTransaction&&db.isTransaction)db.exec('ROLLBACK');if(!readOptions.database)db.close();}
 }
 const hasIssueKeys=(event:CaptureEvent)=>[event.data?.browserUrl,event.data?.browserTitle,event.data?.orcaSelectedTabTitle,event.data?.tabTitle].some(value=>issueKeys(value).length>0);
 const canonicalProject=(value:string)=>{const path=value.includes('::')?value.split('::').at(-1)||value:value;return isAbsolute(path)?projectPathFromWorktree(path):path;};

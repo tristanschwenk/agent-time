@@ -1,3 +1,4 @@
+import{withProjectPaths,validProjectPaths,type ProjectPathDependency}from'./project-path.ts';
 import type {BillingProgress} from './billing-progress.ts';
 import {validBillingProgressId} from './billing-progress.ts';
 import {PeriodTimeCredits} from '../mcp/time-credit.ts';
@@ -73,10 +74,10 @@ function dayInput(output:string,db:DatabaseSync,project:BillingProject,projects:
  const signature=key();if(!signature)return computeDayInput(output,db,project,projects,date,settings,asOf);
  const projection=billingProjection(output),cacheDate=JSON.stringify([project.id,date,start,end]);
  try{
-  const cached=projection.getView<BillingDayInput>('billing-input',cacheDate,signature);if(cached)return cached;
-  const value=computeDayInput(output,db,project,projects,date,settings,asOf);
-  if(signature===key())projection.putView('billing-input',cacheDate,signature,value);
-  return value;
+  const cached=projection.getView<{value:BillingDayInput;paths:ProjectPathDependency[]}>('billing-input',cacheDate,signature);if(cached?.value&&validProjectPaths(cached.paths))return cached.value;
+  const tracked=withProjectPaths(()=>computeDayInput(output,db,project,projects,date,settings,asOf));
+  if(tracked.paths&&signature===key())projection.putView('billing-input',cacheDate,signature,tracked);
+  return tracked.value;
  }finally{projection.close();}
 }
 function computeDayInput(output:string,db:DatabaseSync,project:BillingProject,projects:BillingProject[],date:string,settings:ReturnType<typeof snapshotSettings>,asOf:number):BillingDayInput{

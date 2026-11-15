@@ -37,8 +37,25 @@ function principalCheckout(root:string,common:string):string|undefined{
  }catch{/* Missing, bare or oversized metadata cannot establish a principal checkout. */}
  return;
 }
+export interface ProjectPathDependency{path:string;hostId?:string;resolved:string;}
+let pathObserver:((dependency:ProjectPathDependency)=>void)|undefined;
+/** Synchronous, bounded dependency capture; always close in finally. Nested
+ * reads forward their dependencies so an outer derived view remains complete. */
+export function collectProjectPaths(){
+ const previous=pathObserver,paths=new Map<string,ProjectPathDependency>();let overflow=false,closed=false;
+ const observer=(dependency:ProjectPathDependency)=>{previous?.(dependency);if(overflow)return;const key=JSON.stringify([dependency.path,dependency.hostId]),prior=paths.get(key);if(prior&&prior.resolved!==dependency.resolved){paths.clear();overflow=true;return;}paths.set(key,dependency);if(paths.size>8192){paths.clear();overflow=true;}};
+ pathObserver=observer;
+ return {get paths(){return overflow?undefined:[...paths.values()];},close(){if(!closed){pathObserver=previous;closed=true;}}};
+}
+export function withProjectPaths<T>(run:()=>T):{value:T;paths:ProjectPathDependency[]|undefined}{const capture=collectProjectPaths();try{return {value:run(),paths:capture.paths};}finally{capture.close();}}
+export function validProjectPaths(paths:unknown):paths is ProjectPathDependency[]{
+ return Array.isArray(paths)&&paths.length<=8192&&paths.every(item=>item&&typeof item.path==='string'&&typeof item.resolved==='string'&&(item.hostId===undefined||typeof item.hostId==='string')&&resolveProjectPath(item.path,{hostId:item.hostId})===item.resolved);
+}
 /** Canonical project path, preserving explicit subproject directories and raw caller data. */
 export function resolveProjectPath(path:string,options:{hostId?:string}={}):string{
+ const resolved=resolvePath(path,options);pathObserver?.({path,hostId:options.hostId,resolved});return resolved;
+}
+function resolvePath(path:string,options:{hostId?:string}):string{
  const normalized=resolve(path),marker=`${sep}.orca${sep}workspaces${sep}`,orca=normalized.indexOf(marker);
  if(orca>=0)return normalized.slice(0,orca)||sep;
  const host=options.hostId;
