@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {gzipSync} from 'node:zlib';
+import {gzipSync,gunzipSync} from 'node:zlib';
 import {encodeEventBlock,decodeEventBlock,MAX_BLOCK_EVENTS,MAX_BLOCK_BYTES} from '../src/capture/packed-codec.ts';
 const event=(id:string,kind:string,at:number,extra:Record<string,unknown>={})=>JSON.stringify({eventId:id,source:'hook',kind,observedAt:at,monotonicAt:at,collectorEpoch:'epoch',hostId:'local',provider:'claude',sessionId:'session',data:{toolId:'tool',toolName:'Read',stopBlocked:false},...extra});
 
@@ -54,4 +54,20 @@ test('block sizes and decoded expansion are bounded and corruption is rejected',
 test('shared records substantially reduce repetitive payload bytes before any history is discarded',()=>{
  const values=Array.from({length:500},(_,i)=>event('id-'+i,'activity',100+i*2,{source:'macos',data:{foregroundBundleId:'com.example.Editor',foregroundName:'Editor',idleSeconds:i%10,accessibilityTrusted:true}}));
  const block=encodeEventBlock(values);assert.ok(block.data.length<block.originalBytes/5);assert.deepEqual(decodeEventBlock(block.data,block.key),values);
+});
+
+test('canonical hook and report contexts share version-one storage without dropping any boundary',()=>{
+ const context={workspaceId:'host::/Users/example/Github/project',cwd:'/Users/example/Github/project',terminalHandle:'terminal',data:{toolName:'Read',description:'A repeated long context '.repeat(30)}};
+ const values=Array.from({length:80},(_,i)=>event(`id-${i}`,'tool_start',100+i,{...context,data:{...context.data,toolId:`tool-${i}`}}));
+ const block=encodeEventBlock(values);
+ assert.ok(block.records.contextRuns>0,'ordinary canonical hook contexts should share storage');
+ assert.deepEqual(decodeEventBlock(block.data,block.key),values);
+ const format=JSON.parse(gunzipSync(block.data).toString());
+ assert.equal(format.version,1);assert(format.records.every((r:any[])=>[0,1,2,3].includes(r[0])));
+});
+
+test('context sharing keeps nested values, field order, absent data and raw JSON byte for byte',()=>{
+ const values=Array.from({length:12},(_,i)=>JSON.stringify(JSON.parse(`{"eventId":"${i}","source":"agent_report","kind":"work_context","provider":"claude","observedAt":${i},"data":{"project":"é/📘","attributes":{"__proto__":"safe","constructor":${i}}}}`)));
+ values.push('{ "source": "hook", "kind": "tool_start" }','{"source":"capture","kind":"coverage"}','{"data":null}');
+ assert.deepEqual(decodeEventBlock(encodeEventBlock(values).data,encodeEventBlock(values).key),values);
 });

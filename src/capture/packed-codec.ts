@@ -12,7 +12,7 @@ type RawRecord=[0,number,string];
 type SharedRecord=[1|2|3,ObjectValue,ObjectValue,Part[]];
 type RecordValue=RawRecord|SharedRecord;
 interface Format {version:1;count:number;bytes:number;shapes:Shape[];records:RecordValue[];}
-export interface PackedBlock {data:Buffer;key:string;originalBytes:number;count:number;records:{toolCalls:number;activityRuns:number;workerRuns:number};}
+export interface PackedBlock {data:Buffer;key:string;originalBytes:number;count:number;records:{toolCalls:number;activityRuns:number;workerRuns:number;contextRuns:number};}
 const object=(value:unknown):value is ObjectValue=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const own=Object.hasOwn;
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
@@ -53,7 +53,7 @@ export function encodeEventBlock(payloads:string[],toolPairs:Array<[number,numbe
  const bytes=payloads.reduce((n,value)=>n+Buffer.byteLength(value),0);
  if(bytes>MAX_BLOCK_BYTES)throw new Error('Packed block payload bytes exceed the size limit');
  const events=payloads.map(canonical),used=new Uint8Array(payloads.length),shapes:Shape[]=[],shapeIds=new Map<string,number>(),records:RecordValue[]=[];
- const stats={toolCalls:0,activityRuns:0,workerRuns:0};
+ const stats={toolCalls:0,activityRuns:0,workerRuns:0,contextRuns:0};
  const shape=(event:ObjectValue)=>{
   const value:Shape=[Object.keys(event),object(event.data)?Object.keys(event.data):null],key=JSON.stringify(value);
   let id=shapeIds.get(key);if(id===undefined){id=shapes.length;shapeIds.set(key,id);shapes.push(value);}return id;
@@ -90,10 +90,33 @@ export function encodeEventBlock(payloads:string[],toolPairs:Array<[number,numbe
  }
  for(const slots of activities)if(slots.length>1)shared(2,slots);
  for(const slots of workers.values())if(slots.length>1)shared(3,slots);
- for(let slot=0;slot<payloads.length;slot++)if(!used[slot])records.push([0,slot,payloads[slot]!]);
- const format:Format={version:1,count:payloads.length,bytes,shapes,records},body=Buffer.from(JSON.stringify(format));
- if(body.length>MAX_CODEC_BYTES)throw new Error('Packed codec size exceeds its limit');
- const data=gzipSync(body,{level:6});return {data,key:digest(data),originalBytes:bytes,count:payloads.length,records:stats};
+ const finish=(values:RecordValue[],types:Shape[])=>{
+  const body=Buffer.from(JSON.stringify({version:1,count:payloads.length,bytes,shapes:types,records:values} satisfies Format));
+  if(body.length>MAX_CODEC_BYTES)throw new Error('Packed codec size exceeds its limit');
+  return gzipSync(body,{level:6});
+ };
+ // Version-one shared records already carry arbitrary context dictionaries.
+ // Expand their use without new tags or changing a single original payload.
+ const raw=()=>{for(let slot=0;slot<payloads.length;slot++)if(!used[slot])records.push([0,slot,payloads[slot]!]);};
+ const originalRecords=records.slice(),originalUsed=used.slice();
+ raw();const original=finish(records,shapes);records.splice(0,records.length,...originalRecords);used.set(originalUsed);
+ const groups=new Map<string,number[]>();
+ for(let slot=0;slot<events.length;slot++){
+  const e=events[slot];if(used[slot]||!e)continue;
+  const identity=JSON.stringify([shape(e),e.source,e.kind,e.provider,e.hostId,e.sessionId,e.agentId,e.workspaceId,e.cwd,e.terminalHandle]);
+  const group=groups.get(identity)||[];group.push(slot);groups.set(identity,group);
+ }
+ const oldWorkerRuns=stats.workerRuns;
+ for(const group of groups.values())if(group.length>=3){shared(3,group);stats.contextRuns++;}
+ stats.workerRuns=oldWorkerRuns;
+ raw();let data=original;
+ if(stats.contextRuns){
+  try{const candidate=finish(records,shapes);if(candidate.length<original.length)data=candidate;else stats.contextRuns=0;}
+  catch(error){if(!(error instanceof Error)||!error.message.includes('codec size'))throw error;stats.contextRuns=0;}
+ }
+ // Compression is background, bounded work: compare actual compressed sizes,
+ // so high-cardinality dictionaries can never increase a stored block.
+ return {data,key:digest(data),originalBytes:bytes,count:payloads.length,records:stats};
 }
 function invalid():never{throw new Error('Corrupt packed event format');}
 function keys(value:unknown):value is string[]{return Array.isArray(value)&&value.length<=1024&&value.every(key=>typeof key==='string')&&new Set(value).size===value.length;}
