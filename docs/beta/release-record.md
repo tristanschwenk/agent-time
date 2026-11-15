@@ -1,5 +1,11 @@
 # Agent Time public beta release record
 
+## 0.2.0-beta.58 — ingestion and persistent credited periods
+
+Owner requested publication on 2026-11-15. Includes ingestion-time tool reconciliation, transactional mutation/review tracking, persistent dependency-scoped credited periods, background resumable preparation, compact Home responses and validated daily/report reading models. Source proofs and existing timing/billing rules remain authoritative. First-report equality, original proof digests, targeted rebuilds and storage bounds are recorded in [the validation report](../validation/2026-11-15-ingestion-periods.md). Initial history preparation is separate from report latency; a local 30-day first-report comparison measured 43.64 s to 136 ms and 1070.25 to 135.89 MiB peak report RSS.
+
+Candidate publication is in progress. The signed CI run, public artifact hashes, notarization and independent package verification will be recorded after completion. Installation or OTA on the owner's Mac is not claimed.
+
 ## `0.2.0-beta.57` published and verified — 2026-11-14
 
 The release owner requested publication of all four post-beta.56 lots and their final fixes. Implementation spans `6f4082d`, `8225b36`, `0a9b9ba`, `6ada478`, `7a4f11c`; validation is recorded in [the four-lot evidence](../validation/2026-11-14-next-steps.md). The selected day loads before cooperative backlog checks; shared details, exact human assignments and explicit report scope preserve existing timing formulas and data. GitHub Actions [run 43558809707](https://github.com/zaosoula/agent-time/actions/runs/43558809707) built and published source `d3b59672ae3b5956e19940e858bb4b1c1722dcf0`. CI passed 691 JavaScript tests, 35 native tests, production typecheck/build and a dependency audit with zero production vulnerabilities. The independent local suite also passed 691 tests. The signed build passed Apple notarization and packaged runtime checks. Independent strict deep signatures, app/DMG stapled tickets and both Gatekeeper assessments passed. All 88 bundled capture/MCP/usage source modules match the release source; its signed Node passed 64 additional timing, billing, protocol, workspace and review-loading checks.
