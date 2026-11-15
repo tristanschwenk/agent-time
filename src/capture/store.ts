@@ -402,7 +402,7 @@ export class EventStore {
       try{
         for(const row of this.db.prepare('SELECT a.rowid archived_rowid,m.rowid current_rowid,a.observed_at archived_at,m.observed_at current_at,a.payload archived,m.payload current FROM archive.events a LEFT JOIN main.events m ON m.event_id=a.event_id ORDER BY a.rowid').iterate())
           if(row.archived_rowid!==row.current_rowid||row.archived_at!==row.current_at||row.archived!==row.current)return false;
-        const derived=new Set(['events','at_event_blocks','at_tool_keys','at_pack_state','day_review_cache','observation_signatures']);
+        const derived=new Set(['events','at_event_blocks','at_tool_keys','at_pack_state','day_review_cache','observation_signatures','at_projection_revision','at_dependency_revision','at_evidence_buckets']);
         for(const row of this.db.prepare("SELECT name,sql FROM archive.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").iterate()){
           const name=String(row.name);if(derived.has(name))continue;
           if(this.db.prepare("SELECT sql FROM main.sqlite_master WHERE type='table' AND name=?").get(name)?.sql!==row.sql)return false;

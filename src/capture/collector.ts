@@ -90,7 +90,7 @@ export class Collector {
   private lastError:string|null=null; private macos:Record<string,unknown>|null=null; private lockOwned=false;
   private failedPoller:string|null=null; private macError:string|null=null;
   private stopping:Promise<ReturnType<Collector['status']>>|undefined;
-  private surfaces:CaptureSettings={...defaultSettings};private resourceCache?:{at:number;stamp:string;expires:number;signature:string;value:Map<string,ReportedResource>};private summaryTokens=new WeakMap<Summary,string>();private summaryTokenCount=0;private summaryEpoch=Date.now().toString(36);private derivedMemo?:{day:Summary;resources:Map<string,ReportedResource>;counters:string;value:Summary}; private revision=0;
+  private surfaces:CaptureSettings={...defaultSettings};private resourceCache?:{at:number;stamp:string;expires:number;signature:string;events?:CaptureEvent[];value:Map<string,ReportedResource>};private summaryTokens=new WeakMap<Summary,string>();private summaryTokenCount=0;private summaryEpoch=Date.now().toString(36);private derivedMemo?:{day:Summary;resources:Map<string,ReportedResource>;counters:string;value:Summary}; private revision=0;
   private surfaceHistory:CaptureEvent[]=[];
   /** Whole-history summary, only for callers that ask without a date. */
   private summaryCache:{revision:string;at:number;value:Summary}|undefined;
@@ -700,12 +700,15 @@ export class Collector {
   /** Pages agents reported in the last 31 days, refreshed at most every 10 seconds. */
   private resources(){
     const now=Date.now()/1000,stamp=this.store.dependencyRevision('resources');
-    if(!this.resourceCache||this.resourceCache.stamp!==stamp||now<this.resourceCache.at||now>this.resourceCache.expires){
-      const events=this.store.resourceEvents(now-31*86400,now+60),next=reportedResources(events),previous=this.resourceCache?.value;
+    if(!this.resourceCache||this.resourceCache.stamp!==stamp||now<this.resourceCache.at||now>this.resourceCache.expires||now-this.resourceCache.at>10){
+      const reusable=this.resourceCache?.stamp===stamp&&now>=this.resourceCache.at&&now<=this.resourceCache.expires;
+      // Re-resolve filesystem/worktree paths on the existing ten-second cadence,
+      // but do not reread unchanged SQL payloads for that filesystem refresh.
+      const events=reusable&&this.resourceCache?.events?this.resourceCache.events:this.store.resourceEvents(now-31*86400,now+60),next=reportedResources(events),previous=this.resourceCache?.value;
       const same=previous&&previous.size===next.size&&[...next].every(([key,value])=>JSON.stringify(previous.get(key))===JSON.stringify(value));
       // Sliding history expires; future-dated declarations become visible too.
       let expires=this.store.nextResourceAt(now+60)-60;for(const event of events)expires=Math.min(expires,event.observedAt+31*86400);
-      this.resourceCache={at:now,stamp,expires,signature:same?this.resourceCache!.signature:createHash('sha256').update(JSON.stringify([...next])).digest('hex'),value:same?previous:next};
+      this.resourceCache={at:now,stamp,expires,events:estimatedBytes(events,8*1024*1024)<=8*1024*1024?events:undefined,signature:same?this.resourceCache!.signature:createHash('sha256').update(JSON.stringify([...next])).digest('hex'),value:same?previous:next};
     }
     return this.resourceCache.value;
   }
