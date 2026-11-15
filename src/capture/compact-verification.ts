@@ -27,9 +27,10 @@ export function rowDigest(rows:Iterable<Record<string,unknown>>):string{
  return digest.digest('hex');
 }
 export const eventsDigest=(db:DatabaseSync,where='')=>rowDigest(db.prepare(`SELECT event_id,observed_at,payload FROM events ${where} ORDER BY rowid`).iterate());
+/** Derived revision bookkeeping changes during compaction; evidence and user tables do not. */
 export function otherTablesDigest(db:DatabaseSync):string{
  const digest=createHash('sha256');
- for(const table of db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name<>'events' AND name NOT IN ('at_event_blocks','at_tool_keys','at_pack_state') ORDER BY name").iterate()){
+ for(const table of db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name<>'events' AND name NOT IN ('at_event_blocks','at_tool_keys','at_pack_state','at_projection_revision','at_dependency_revision','at_evidence_buckets') ORDER BY name").iterate()){
   const name=String(table.name).replaceAll('"','""');
   digest.update(JSON.stringify(table)+'\n');
   digest.update(rowDigest(db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).iterate()));

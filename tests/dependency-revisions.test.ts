@@ -37,3 +37,14 @@ test('resource mapping reads only resources and refreshes on writes, expiry and 
   now+=32*86400*1000;assert.equal((c as any).resources().size,0);now-=32*86400*1000;assert.equal((c as any).resources().size,2);
  }finally{Date.now=realNow;await c.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('closed-day counter evidence survives restart without rereading payloads and still notices new closures',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'at-counter-evidence-'));let c=new Collector(dir);const date='2026-10-20',at=new Date(date+'T12:00:00').getTime()/1000;
+ try{
+  c.store.put(makeEvent('agent_report','task_start',{eventId:'counter',observedAt:at,provider:'claude',sessionId:'session',data:{title:'Task'}}));
+  const first=c.reportedWork(date);await c.close();c=new Collector(dir);
+  const read=c.store.taskReportEvidence.bind(c.store);let reads=0;c.store.taskReportEvidence=(...args)=>{reads++;return read(...args);};
+  assert.deepEqual(c.reportedWork(date),first);assert.equal(reads,0,'persisted dependency-matched evidence avoids another payload scan');
+  c.store.put(makeEvent('agent_report','task_stop',{observedAt:at+20,provider:'claude',sessionId:'session',data:{taskCounterId:'counter'}}));assert.notDeepEqual(c.reportedWork(date),first);assert.equal(reads,1);
+ }finally{await c.close();rmSync(dir,{recursive:true,force:true});}
+});

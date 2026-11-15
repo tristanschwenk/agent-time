@@ -120,3 +120,14 @@ test('compaction rejects a payload ID that disagrees with the SQLite primary key
   assert.equal(existsSync(target),false);
  }finally{if(store.database.isOpen)store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('compaction ignores disposable revision bookkeeping while preserving decisions and all retained evidence',()=>{
+ const root=mkdtempSync(join(tmpdir(),'at-compact-revisions-')),source=join(root,'source.sqlite'),target=join(root,'target.sqlite'),store=new EventStore(source);
+ try{
+  for(let i=0;i<4;i++)store.put({eventId:`terminal-${i}`,source:'orca',kind:'terminal',observedAt:100+i,monotonicAt:i,collectorEpoch:'epoch',hostId:'host',terminalHandle:'term',data:{title:'Same'}});
+  store.setHumanDecisions([['a','b']],'assigned','/project');store.projectionSignature({readFrom:0,readTo:1000,activityFrom:0,activityTo:1000});
+  const events=store.events(),decisions=store.humanDecisions();const report=compactCaptureCopy(source,target);assert.equal(report.afterRows,2);
+  const after=new EventStore(target);try{assert.deepEqual(after.events(),[events[0],events[3]]);assert.deepEqual(after.humanDecisions(),decisions);}finally{after.close();}
+  assert.deepEqual(store.events(),events);
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});

@@ -814,18 +814,21 @@ export class Collector {
     const revision=this.store.revision();
     if(this.reportEvidenceStamp?.revision!==revision)this.reportEvidenceStamp={revision,value:this.store.reportedEvidenceRevision()};
     const stamp=this.reportEvidenceStamp.value,upper=Math.max(end,now)+60;
-    let entry=this.reportEvidence.get(date);
+    let entry=this.reportEvidence.get(date)??(now>=end?this.projection.getView<{revision:string;events:CaptureEvent[];ends:Map<string,number>;upper:number;expires:number;bytes:number}>('counter-evidence',date,stamp):undefined);
     if(!entry||entry.revision!==stamp||upper<entry.upper||now>=entry.expires){
       const events=this.store.taskReportEvidence(start-86400,end+43200),hasCounters=events.some(event=>event.kind==='task_start');
       const ends=hasCounters?this.store.sessionEnds(start-86400,upper):new Map<string,number>();
       const expires=hasCounters?this.store.nextSessionEndAt(upper)-60:Infinity;
       entry={revision:stamp,events,ends,upper,expires,bytes:estimatedBytes({events,ends:[...ends]})};
+      if(now>=end&&entry.bytes<=8*1024*1024)this.projection.putView('counter-evidence',date,stamp,entry);
       this.reportEvidence.delete(date);
       if(entry.bytes<=8*1024*1024){
         this.reportEvidence.set(date,entry);
         while(this.reportEvidence.size>6||[...this.reportEvidence.values()].reduce((n,e)=>n+e.bytes,0)>8*1024*1024)this.reportEvidence.delete(this.reportEvidence.keys().next().value!);
       }
-    }else{this.reportEvidence.delete(date);this.reportEvidence.set(date,entry);}
+    }else{this.reportEvidence.delete(date);this.reportEvidence.set(date,entry);
+      while(this.reportEvidence.size>6||[...this.reportEvidence.values()].reduce((n,e)=>n+e.bytes,0)>8*1024*1024)this.reportEvidence.delete(this.reportEvidence.keys().next().value!);
+    }
     // Only SQL evidence is cached: open ends, leases and interrupted status use this read's clock.
     return reportedWorkForDay(entry.events,start,end,now,new Map(entry.ends));
   }
