@@ -30,6 +30,7 @@ const maxCachedDays=16;
 export class DaySummaries {
  private entries=new Map<string,DayWindow>();
  private seenRowid:number|undefined;
+ private mutationRevision?:string;
  private version=0;private budgetBytes:number;
  private sizes=new WeakMap<DayWindow,{version:number;bytes:number}>();
  private retainedBytes(entry:DayWindow){
@@ -59,6 +60,9 @@ export class DaySummaries {
   return entry;
  }
  private sync(){
+  const mutation=this.store.dependencyRevision('mutations');
+  if(this.mutationRevision!==undefined&&mutation!==this.mutationRevision){this.entries.clear();this.seenRowid=undefined;}
+  this.mutationRevision=mutation;
   const last=this.store.lastEventRowid();
   if(this.seenRowid===undefined||!this.entries.size||last<this.seenRowid||last-this.seenRowid>maxSyncRows){
    if(this.seenRowid!==undefined&&(last<this.seenRowid||last-this.seenRowid>maxSyncRows))this.entries.clear();

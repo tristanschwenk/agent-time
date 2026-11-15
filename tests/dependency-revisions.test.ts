@@ -60,3 +60,12 @@ test('counter evidence keys include local day bounds across timezone changes and
   process.env.TZ='UTC';const runtime=c.reportedWork('2026-10-20');(c as any).reportEvidence.clear();assert.deepEqual(runtime,c.reportedWork('2026-10-20'));
  }finally{await c.close();if(previousTZ===undefined)delete process.env.TZ;else process.env.TZ=previousTZ;rmSync(dir,{recursive:true,force:true});}
 });
+
+test('live day replays after an external correction without a new event rowid',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'at-live-correction-')),c=new Collector(dir),other=new EventStore(join(dir,'events.sqlite')),date=new Date().toLocaleDateString('en-CA'),at=new Date(date+'T10:00:00').getTime()/1000;
+ try{
+  const a=makeEvent('macos','activity',{eventId:'a',observedAt:at,monotonicAt:at,data:{idleSeconds:0}}),b={...a,eventId:'b',observedAt:at+5,monotonicAt:at+5};c.store.put(a);c.store.put(b);assert.equal(c.summaryForDate(date).humanSeconds,60);
+  other.database.prepare('UPDATE events SET payload_data=? WHERE event_id=?').run(JSON.stringify({...b,data:{idleSeconds:400}}),'b');
+  assert.equal(c.summaryForDate(date).humanSeconds,0);
+ }finally{other.close();await c.close();rmSync(dir,{recursive:true,force:true});}
+});

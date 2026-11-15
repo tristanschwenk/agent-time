@@ -20,7 +20,7 @@ export function ensureDependencyRevisions(db:DatabaseSync,packed:boolean){
  for(const table of ['human_decisions','human_splits'])for(const action of ['INSERT','UPDATE','DELETE'])db.exec(`CREATE TRIGGER IF NOT EXISTS at_dependency_${table}_${action.toLowerCase()} AFTER ${action} ON ${table} BEGIN UPDATE at_dependency_revision SET review=review+1 WHERE id=1; END;`);
  if(packed)for(const action of ['INSERT','UPDATE','DELETE'])db.exec(`CREATE TRIGGER IF NOT EXISTS at_dependency_blocks_${action.toLowerCase()} AFTER ${action} ON at_event_blocks BEGIN UPDATE at_dependency_revision SET mutations=mutations+1 WHERE id=1; END;`);
 }
-export function dependencyRevision(db:DatabaseSync,scope:'resources'|'reports'|'review'):string{
+export function dependencyRevision(db:DatabaseSync,scope:'resources'|'reports'|'review'|'mutations'):string{
  const row=db.prepare(`SELECT identity,${scope} revision,mutations FROM at_dependency_revision WHERE id=1`).get();if(!row)throw Error('Missing dependency revision');
  return JSON.stringify([row.identity,row.revision,scope==='review'?0:row.mutations]);
 }
