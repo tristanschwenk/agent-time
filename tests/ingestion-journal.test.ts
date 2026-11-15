@@ -18,9 +18,10 @@ for(const packed of [false,true])test(`mutation journal ${packed?'packed':'legac
  assert.equal(readIngestionChanges(db,0,10)[0]?.next?.observedAt,20);
  db.prepare(`INSERT OR REPLACE INTO events(event_id,observed_at,${field}) VALUES(?,?,?)`).run('a',30,JSON.stringify({...event,observedAt:30}));
  assert.equal(readIngestionChanges(db,1,10)[0]?.old?.observedAt,20);
+ const beforeReview=ingestionJournalState(db).sequence;
  db.exec("INSERT INTO human_decisions VALUES('a','b','assigned'); UPDATE human_decisions SET end_event_id='c'");
- assert.deepEqual(readIngestionChanges(db,3,10)[0]?.pairs,[['a','b'],['a','c']]);
- db.exec('DELETE FROM events');assert.equal(readIngestionChanges(db,4,10)[0]?.old?.observedAt,30);db.close();
+ assert.deepEqual(readIngestionChanges(db,beforeReview+1,10)[0]?.pairs,[['a','b'],['a','c']]);
+ const beforeDelete=ingestionJournalState(db).sequence;db.exec('DELETE FROM events');assert.equal(readIngestionChanges(db,beforeDelete,10)[0]?.old?.observedAt,30);db.close();
 });
 test('tool replay, late arrival, ambiguity, clocks, updates, rollback',()=>{
  const db=openEventDatabase(':memory:'),tools=new ToolReconciliation(db);
@@ -54,7 +55,7 @@ test('replacement captures distinct event-id and rowid conflicts',()=>{
  const db=openEventDatabase(':memory:');db.exec('CREATE TABLE events(event_id TEXT PRIMARY KEY,observed_at REAL,payload TEXT)');ensureIngestionJournal(db,false);
  for(const id of ['a','b']){const e=makeEvent('hook','tool_start',{eventId:id});insertEventRow(db,id,e.observedAt,JSON.stringify(e));}
  const event=makeEvent('hook','tool_end',{eventId:'a'});db.prepare('INSERT OR REPLACE INTO events(rowid,event_id,observed_at,payload) VALUES(2,?,?,?)').run('a',event.observedAt,JSON.stringify(event));
- assert.deepEqual(readIngestionChanges(db,0,10).map(c=>c.old?.eventId),['a','b']);db.close();
+ assert.deepEqual(readIngestionChanges(db,0,10).filter(c=>c.old).map(c=>c.old?.eventId),['a','b']);db.close();
 });
 
 for(const packed of [false,true])test(`journal catches separate-connection writes ${packed}`,()=>{
@@ -75,4 +76,14 @@ test('tool identity excludes incomplete and distinguishes agent and terminal inc
  tools.ingest([{rowid:1,event:{...start,terminalIncarnation:'new'}}]);assert.equal(tools.get(old),undefined);assert.equal(tools.get(other)?.status,'complete');
  const before=tools.get(other);assert.throws(()=>tools.ingest([{rowid:1,event:{...start,terminalIncarnation:'new'}},{rowid:NaN,event:{...start,eventId:'invalid'}}]));assert.deepEqual(tools.get(other),before);
  assert.equal(db.prepare('SELECT status FROM tool_executions WHERE identity=?').get(other)?.status,'complete');db.close();
+});
+for(const packed of [false,true])test(`rowid reuse stays visible and highwater rolls back ${packed}`,()=>{
+ const db=openEventDatabase(':memory:');if(packed)createPackedEventSchema(db);else db.exec('CREATE TABLE events(event_id TEXT PRIMARY KEY,observed_at REAL,payload TEXT)');
+ const put=(id:string)=>{const event=makeEvent('hook','tool_start',{eventId:id});insertEventRow(db,id,event.observedAt,JSON.stringify(event));};
+ put('historical');ensureIngestionJournal(db,packed);put('maximum');assert.equal(ingestionJournalState(db).sequence,0);
+ db.exec("DELETE FROM events WHERE event_id='maximum'");ensureIngestionJournal(db,packed);put('reused');
+ const changes=readIngestionChanges(db,0,10);assert.equal(changes.length,2);assert.equal(changes[1]?.next?.eventId,'reused');assert.equal(changes[1]?.old,undefined);
+ db.exec("BEGIN; DELETE FROM events; ");put('rolled-back-reuse');put('rolled-back-high');put('rolled-back-higher');db.exec('ROLLBACK');
+ assert.equal(ingestionJournalState(db).sequence,2);assert.equal(db.prepare('SELECT max_rowid FROM at_ingestion_highwater WHERE id=1').get()?.max_rowid,2);
+ put('increasing');assert.equal(ingestionJournalState(db).sequence,2);db.close();
 });

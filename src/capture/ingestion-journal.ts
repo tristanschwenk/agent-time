@@ -13,11 +13,19 @@ export interface IngestionChange {sequence:number;kind:'event'|'review'|'blocks'
 export function ensureIngestionJournal(db:DatabaseSync,packed:boolean):void {
  db.exec(`CREATE TABLE IF NOT EXISTS at_ingestion_sequence(id INTEGER PRIMARY KEY CHECK(id=1),sequence INTEGER NOT NULL);
  INSERT OR IGNORE INTO at_ingestion_sequence VALUES(1,0);
+ CREATE TABLE IF NOT EXISTS at_ingestion_highwater(id INTEGER PRIMARY KEY CHECK(id=1),max_rowid INTEGER NOT NULL);
+ INSERT INTO at_ingestion_highwater SELECT 1,coalesce(max(rowid),0) FROM events WHERE true ON CONFLICT(id) DO UPDATE SET max_rowid=max(max_rowid,excluded.max_rowid);
  CREATE TABLE IF NOT EXISTS at_ingestion_changes(sequence INTEGER PRIMARY KEY,kind TEXT NOT NULL,old_meta TEXT,next_meta TEXT,pairs TEXT);`);
  const payload=(ref:string)=>packed?`CASE WHEN typeof(${ref}.payload_data)='text' THEN ${ref}.payload_data ELSE at_event_payload(hex(${ref}.payload_data)) END`:`${ref}.payload`;
  const meta=(ref:string)=>`json_object(${fields.map(field=>`'${field}',json_extract(${payload(ref)},'$.${field==='toolId'||field==='taskCounterId'?'data.':''}${field}')`).join(',')})`;
  const write=(kind:string,old='NULL',next='NULL',pairs='NULL')=>`UPDATE at_ingestion_sequence SET sequence=sequence+1 WHERE id=1; INSERT INTO at_ingestion_changes SELECT sequence,'${kind}',${old},${next},${pairs} FROM at_ingestion_sequence WHERE id=1; DELETE FROM at_ingestion_changes WHERE sequence<=(SELECT sequence-10000 FROM at_ingestion_sequence WHERE id=1);`;
- db.exec(`CREATE TRIGGER IF NOT EXISTS at_ingestion_event_replace BEFORE INSERT ON events WHEN EXISTS(SELECT 1 FROM events WHERE (event_id=NEW.event_id OR rowid=NEW.rowid) AND (event_id IS NOT NEW.event_id OR observed_at IS NOT NEW.observed_at OR payload IS NOT (${payload('NEW')}))) BEGIN
+ db.exec(`CREATE TRIGGER IF NOT EXISTS at_ingestion_event_append AFTER INSERT ON events BEGIN
+ UPDATE at_ingestion_sequence SET sequence=sequence+1 WHERE id=1 AND NEW.rowid<=(SELECT max_rowid FROM at_ingestion_highwater WHERE id=1);
+ INSERT INTO at_ingestion_changes SELECT sequence,'event',NULL,${meta('NEW')},NULL FROM at_ingestion_sequence WHERE id=1 AND NEW.rowid<=(SELECT max_rowid FROM at_ingestion_highwater WHERE id=1);
+ DELETE FROM at_ingestion_changes WHERE sequence<=(SELECT sequence-10000 FROM at_ingestion_sequence WHERE id=1);
+ UPDATE at_ingestion_highwater SET max_rowid=max(max_rowid,NEW.rowid) WHERE id=1; END;
+ CREATE TRIGGER IF NOT EXISTS at_ingestion_event_highwater AFTER UPDATE ON events BEGIN UPDATE at_ingestion_highwater SET max_rowid=max(max_rowid,NEW.rowid) WHERE id=1; END;
+ CREATE TRIGGER IF NOT EXISTS at_ingestion_event_replace BEFORE INSERT ON events WHEN EXISTS(SELECT 1 FROM events WHERE (event_id=NEW.event_id OR rowid=NEW.rowid) AND (event_id IS NOT NEW.event_id OR observed_at IS NOT NEW.observed_at OR payload IS NOT (${payload('NEW')}))) BEGIN
  INSERT INTO at_ingestion_changes SELECT (SELECT sequence FROM at_ingestion_sequence WHERE id=1)+row_number() OVER (ORDER BY events.rowid),'event',${meta('events')},${meta('NEW')},NULL FROM events WHERE event_id=NEW.event_id OR rowid=NEW.rowid;
  UPDATE at_ingestion_sequence SET sequence=(SELECT max(sequence) FROM at_ingestion_changes) WHERE id=1;
  DELETE FROM at_ingestion_changes WHERE sequence<=(SELECT sequence-10000 FROM at_ingestion_sequence WHERE id=1); END;
