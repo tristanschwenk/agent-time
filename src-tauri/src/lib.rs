@@ -351,53 +351,33 @@ fn validate_method(method:&str,params:&Value)->Result<(),String>{
 async fn capture_request(method:String,params:Value,bridge:State<'_,Arc<Bridge>>)->Result<Value,String>{
  let bridge=bridge.inner().clone();tauri::async_runtime::spawn_blocking(move||bridge.request(&method,params)).await.map_err(|e|e.to_string())?
 }
-#[cfg(unix)]
-fn available_bytes(path:&std::path::Path)->Result<u64,String>{
- use std::os::unix::ffi::OsStrExt;
- let name=std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e|e.to_string())?;
- let mut info=std::mem::MaybeUninit::<libc::statvfs>::uninit();
- if unsafe{libc::statvfs(name.as_ptr(),info.as_mut_ptr())}!=0{return Err(std::io::Error::last_os_error().to_string());}
- let info=unsafe{info.assume_init()};
- Ok((info.f_bavail as u64).saturating_mul(info.f_frsize as u64))
+fn bounded_worker_output(mut input:impl std::io::Read)->std::io::Result<Vec<u8>>{
+ let mut result=Vec::new();let mut chunk=[0u8;4096];loop{let bytes=input.read(&mut chunk)?;if bytes==0{break;}let keep=bytes.min(4096usize.saturating_sub(result.len()));result.extend_from_slice(&chunk[..keep]);}Ok(result)
 }
-fn stage_archive_copy(source:&std::path::Path,output:&std::path::Path)->Result<String,String>{
- use std::io::{Read,Seek,SeekFrom};
- let info=std::fs::symlink_metadata(source).map_err(|e|e.to_string())?;
- let compressed=source.file_name().and_then(|v|v.to_str()).map(|s|s.ends_with(".sqlite.gz")).unwrap_or(false);
- if !info.is_file()||info.file_type().is_symlink()||(!compressed&&source.extension().and_then(|v|v.to_str())!=Some("sqlite")){return Err("Choose a regular SQLite archive".into());}
- if info.len()>8*1024*1024*1024{return Err("Archive is larger than the 8 GB import limit".into());}
- let mut input=std::fs::File::open(source).map_err(|e|e.to_string())?;
- let mut header=[0u8;16];input.read_exact(&mut header).map_err(|e|e.to_string())?;
- if if compressed{header[..2]!=[0x1f,0x8b]}else{&header!=b"SQLite format 3\0"}{return Err("Selected file is not a SQLite archive".into());}
- input.seek(SeekFrom::Start(0)).map_err(|e|e.to_string())?;
- let folder=output.join("exports");
- if folder.exists()&&std::fs::symlink_metadata(&folder).map_err(|e|e.to_string())?.file_type().is_symlink(){return Err("Export folder must not be a symlink".into());}
- std::fs::create_dir_all(&folder).map_err(|e|e.to_string())?;
- #[cfg(unix)] if available_bytes(&folder)?<info.len().saturating_add(1024*1024*1024){return Err("Not enough free space to stage this archive safely".into());}
- #[cfg(unix)] {use std::os::unix::fs::PermissionsExt;std::fs::set_permissions(&folder,std::fs::Permissions::from_mode(0o700)).map_err(|e|e.to_string())?;}
- let stamp=SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e|e.to_string())?.as_secs();
- let id=format!("agent-time-{stamp}-{}.sqlite",uuid::Uuid::new_v4());
- let id=if compressed{format!("{id}.gz")}else{id};
- let path=folder.join(&id);let temporary=folder.join(format!("{id}.tmp"));
- let result=(||->Result<(),String>{
-  let mut target=std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(|e|e.to_string())?;
-  #[cfg(unix)] {use std::os::unix::fs::PermissionsExt;target.set_permissions(std::fs::Permissions::from_mode(0o600)).map_err(|e|e.to_string())?;}
-  std::io::copy(&mut input.take(info.len().saturating_add(1)),&mut target).map_err(|e|e.to_string())?;
-  if target.metadata().map_err(|e|e.to_string())?.len()!=info.len(){return Err("Archive changed during copying".into());}
-  target.sync_all().map_err(|e|e.to_string())?;drop(target);std::fs::rename(&temporary,&path).map_err(|e|e.to_string())
- })();
- if let Err(error)=result{let _=std::fs::remove_file(&temporary);return Err(error);}
- Ok(id)
+fn stage_archive_copy(source:&std::path::Path,output:&std::path::Path,node:&std::path::Path,helper:&std::path::Path)->Result<String,String>{
+ // The internal worker shares SQLite exclusion and crash-owned staging with export/compression.
+ // Paths come from the native picker and the packaged launch specification, never protocol params.
+ let mut child=Command::new(node).arg(helper).arg(source).arg(output).env_remove("NODE_OPTIONS").env_remove("NODE_PATH")
+  .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e|e.to_string())?;
+ let stdout=child.stdout.take().ok_or("Archive worker output unavailable")?;let stderr=child.stderr.take().ok_or("Archive worker diagnostics unavailable")?;
+ let stdout=std::thread::spawn(move||bounded_worker_output(stdout));let stderr=std::thread::spawn(move||bounded_worker_output(stderr));
+ let status=child.wait().map_err(|e|e.to_string())?;
+ let stdout=stdout.join().map_err(|_|"Archive worker output failed")?.map_err(|e|e.to_string())?;
+ let stderr=stderr.join().map_err(|_|"Archive worker diagnostics failed")?.map_err(|e|e.to_string())?;
+ if !status.success(){let detail=String::from_utf8_lossy(&stderr);return Err(if detail.trim().is_empty(){"Archive staging worker failed".into()}else{detail.trim().to_string()});}
+ let response:Value=serde_json::from_slice(&stdout).map_err(|_|"Archive worker returned invalid output")?;
+ let id=response.get("id").and_then(Value::as_str).ok_or("Archive worker returned no archive ID")?;
+ validate_method("archive_preview",&json!({"id":id}))?;Ok(id.to_string())
 }
 #[tauri::command]
 async fn stage_archive(app:tauri::AppHandle,bridge:State<'_,Arc<Bridge>>)->Result<Option<String>,String>{
- let output=bridge.launch.output.clone();
+ let output=bridge.launch.output.clone();let node=bridge.launch.node.clone();let helper=bridge.launch.cli.with_file_name("archive-stage.ts");
  let (sender,receiver)=std::sync::mpsc::channel();
  app.dialog().file().add_filter("Agent Time archive",&["sqlite","gz"]).pick_file(move |selection|{let _=sender.send(selection);});
  let selection=tauri::async_runtime::spawn_blocking(move||receiver.recv().map_err(|e|e.to_string())).await.map_err(|e|e.to_string())??;
  let Some(selection)=selection else{return Ok(None);};
  let source=selection.into_path().map_err(|e|e.to_string())?;
- tauri::async_runtime::spawn_blocking(move||stage_archive_copy(&source,&output).map(Some)).await.map_err(|e|e.to_string())?
+ tauri::async_runtime::spawn_blocking(move||stage_archive_copy(&source,&output,&node,&helper).map(Some)).await.map_err(|e|e.to_string())?
 }
 fn support_payload(version:&str,diagnostics:&Value)->Value{
  let sources=diagnostics["sources"].as_array().map(|items|items.iter().map(|source|json!({
@@ -779,21 +759,34 @@ mod app_icon_tests {
 #[cfg(test)]
 mod archive_stage_tests {
  use super::*;
+ #[test]fn worker_diagnostics_are_bounded_and_drained(){let bytes=vec![b'x';20000];assert_eq!(bounded_worker_output(std::io::Cursor::new(bytes)).unwrap().len(),4096);}
+
+ fn node()->PathBuf{dev_node(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap())}
+ fn stage(source:&std::path::Path,output:&std::path::Path)->Result<String,String>{stage_archive_copy(source,output,&node(),&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("src/capture/archive-stage.ts"))}
+ fn sqlite(source:&std::path::Path){assert!(Command::new(node()).args(["--input-type=module","-e",r#"import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(process.argv[1]);db.exec("CREATE TABLE evidence(id TEXT);INSERT INTO evidence VALUES('base')");db.close();"#]).arg(source).status().unwrap().success());}
+ #[test]
+ fn native_staging_rejects_committed_wal_without_changing_source(){
+  let root=std::env::temp_dir().join(format!("agent-time-stage-wal-{}",uuid::Uuid::new_v4()));std::fs::create_dir_all(&root).unwrap();let source=root.join("backup.sqlite");sqlite(&source);
+  let child=Command::new(node()).args(["--input-type=module","-e","import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(process.argv[1]);db.exec(\"PRAGMA journal_mode=WAL;INSERT INTO evidence VALUES('wal-only')\");process.kill(process.pid,'SIGKILL');"]).arg(&source).status().unwrap();assert!(!child.success());
+  let wal=PathBuf::from(format!("{}-wal",source.display()));let before=std::fs::read(&wal).unwrap();assert!(!before.is_empty());
+  assert!(stage(&source,&root).is_err());assert_eq!(std::fs::read(&wal).unwrap(),before);assert!(!root.join("exports").exists()||std::fs::read_dir(root.join("exports")).unwrap().next().is_none());std::fs::remove_dir_all(root).unwrap();
+ }
+
  #[test]
  fn staged_archive_is_private_and_rejects_non_sqlite_input(){
   let root=std::env::temp_dir().join(format!("agent-time-stage-{}",uuid::Uuid::new_v4()));
   std::fs::create_dir_all(&root).unwrap();
   let source=root.join("backup.sqlite");
-  std::fs::write(&source,b"SQLite format 3\0example").unwrap();
-  let staged=stage_archive_copy(&source,&root).unwrap();
+  sqlite(&source);let original=std::fs::read(&source).unwrap();
+  let staged=stage(&source,&root).unwrap();
   assert!(staged.starts_with("agent-time-"));
-  assert_eq!(std::fs::read(root.join("exports").join(staged)).unwrap(),b"SQLite format 3\0example");
+  assert_eq!(std::fs::read(root.join("exports").join(staged)).unwrap(),original);
   #[cfg(unix)] {use std::os::unix::fs::PermissionsExt;assert_eq!(std::fs::metadata(root.join("exports")).unwrap().permissions().mode()&0o777,0o700);let file=std::fs::read_dir(root.join("exports")).unwrap().next().unwrap().unwrap().path();assert_eq!(std::fs::metadata(file).unwrap().permissions().mode()&0o777,0o600);}
   std::fs::write(&source,b"wrong").unwrap();
-  assert!(stage_archive_copy(&source,&root).is_err());
+  assert!(stage(&source,&root).is_err());
   let huge=std::fs::OpenOptions::new().write(true).open(&source).unwrap();
   huge.set_len(8*1024*1024*1024+1).unwrap();
-  assert!(stage_archive_copy(&source,&root).unwrap_err().contains("8 GB"));
+  assert!(stage(&source,&root).unwrap_err().contains("8 GB"));
   std::fs::remove_dir_all(root).unwrap();
  }
 }
