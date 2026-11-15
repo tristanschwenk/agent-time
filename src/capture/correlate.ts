@@ -53,7 +53,7 @@ const settled=(e:CaptureEvent)=>['succeeded','failed','completed','cancelled','a
 export function compareCausalPosition(aEpoch:string,aMonotonic:number,bEpoch:string,bMonotonic:number):number{
  return aEpoch.localeCompare(bEpoch)||aMonotonic-bMonotonic;
 }
-export function summarize(input:CaptureEvent[],options:{idleThreshold?:number;agentIdleThreshold?:number;maxGap?:number;alreadyUnique?:boolean}={}):Summary {
+export function summarize(input:CaptureEvent[],options:{idleThreshold?:number;agentIdleThreshold?:number;maxGap?:number;alreadyUnique?:boolean;settledActivity?:readonly Interval[]}={}):Summary {
  const maxGap=options.maxGap??15,idle=options.idleThreshold??300,agentIdle=options.agentIdleThreshold??300;
  if(!Number.isFinite(idle)||idle<=0||!Number.isFinite(agentIdle)||agentIdle<=0)throw new Error('invalid idle threshold');
  // SQLite's event_id primary key guarantees this for collector reads. Keep
@@ -252,7 +252,12 @@ export function summarize(input:CaptureEvent[],options:{idleThreshold?:number;ag
   if(e.terminalIncarnation&&match.terminalIncarnation&&e.terminalIncarnation!==match.terminalIncarnation)return e;
   const result=applyBinding(e,match);bindings.set(identity(e),result);return result;
  }
+ // Only the guarded live-stream adapter supplies settled activity. Its strict
+ // wall/causal ordering makes each interval end its exact original emission position.
+ let activityIndex=0;
+ const flushActivity=(before:number)=>{while(activityIndex<(options.settledActivity?.length??0)&&options.settledActivity![activityIndex]!.end<before)intervals.push(options.settledActivity![activityIndex++]!);};
  for(const original of events) {
+  flushActivity(original.observedAt);
   const e=original.source==='hook'?resolve(original):original;
   if(e.kind==='coverage'){coverage.push({reason:String(e.data?.reason||'Missing observations'),source:e.source,eventId:e.eventId});continue;}
   if(e.kind==='capture_settings'){
@@ -372,6 +377,7 @@ export function summarize(input:CaptureEvent[],options:{idleThreshold?:number;ag
    closeKey(key,e);s.state=e.kind==='interrupted'?'interrupted':'idle';
   }else if(e.kind==='prompt_submitted'){closeKey(key,e);s.state='pending';}
  }
+ flushActivity(Infinity);
  for(const a of active.values()){
   unresolved.push({reason:'Open tool has no observed end; credited one provisional minute without extending to now',eventId:a.event.eventId});
   if(a.state==='running')provisional.push({event:a.event,session:a.session,key:a.key});

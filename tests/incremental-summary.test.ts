@@ -40,23 +40,25 @@ test('activity projection declines agent events and a capture fence',()=>{
 test('day summaries replay agent and Orca changes from a bounded window, never the whole history',async()=>{
  const root=mkdtempSync(join(tmpdir(),'agent-time-replay-cache-')),collector=new Collector(root);
  try{
-  const old=[event('a',100),event('b',105)];for(const item of old)collector.store.put(item);
-  const date='1970-01-01';
+  const today=new Date();today.setHours(0,0,0,0);
+  const date=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
+  const liveEvent=(...args:Parameters<typeof event>)=>{const result=event(...args);result.observedAt+=today.getTime()/1000;return result;};
+  const old=[liveEvent('a',100),liveEvent('b',105)];for(const item of old)collector.store.put(item);
   collector.store.events=()=>{throw new Error('Unexpected full database read');};
   assert.deepEqual(collector.summaryForDate(date),summaryForDate(summarize(old),date));
   const days=(collector as any).days;const computed=days.computations;
   // Activity samples append in place.
-  const sample=event('c',108);collector.store.put(sample);
+  const sample=liveEvent('c',108);collector.store.put(sample);
   assert.deepEqual(collector.summaryForDate(date),summaryForDate(summarize([...old,sample]),date));
   assert.equal(days.computations,computed);
-  const hook=event('hook',110,'tool_start','hook',{toolId:'one'});hook.sessionId='session';hook.terminalHandle='terminal';hook.hostId='local';
+  const hook=liveEvent('hook',110,'tool_start','hook',{toolId:'one'});hook.sessionId='session';hook.terminalHandle='terminal';hook.hostId='local';
   collector.store.put(hook);
   assert.deepEqual(collector.summaryForDate(date),summaryForDate(summarize([...old,sample,hook]),date));
-  const worker=event('worker',115,'worker','orca',{state:'working'});worker.hostId='local';worker.dispatchId='dispatch';worker.terminalHandle='terminal';
+  const worker=liveEvent('worker',115,'worker','orca',{state:'working'});worker.hostId='local';worker.dispatchId='dispatch';worker.terminalHandle='terminal';
   collector.store.put(worker);
   assert.deepEqual(collector.summaryForDate(date),summaryForDate(summarize([...old,sample,hook,worker]),date));
-  // A closed day elsewhere is untouched by the new rows.
-  assert.equal(days.computations,computed+2);
+  // Only the unsupported worker update recomputes the bounded window.
+  assert.equal(days.computations,computed+1);
  }finally{await collector.close();rmSync(root,{recursive:true,force:true});}
 });
 

@@ -3,7 +3,7 @@ import {estimatedBytes} from './storage-policy.ts';
 import type {EventStore} from './store.ts';
 import type {CaptureEvent,Summary} from './events.ts';
 import {summarize} from './correlate.ts';
-import {appendActivitySummary} from './incremental-summary.ts';
+import {appendActivitySummary,appendLiveSummary,createLiveSummary,type LiveSummaryState} from './incremental-summary.ts';
 import {inWindow,isActivitySample,localDayBounds,type WindowBounds,windowBounds} from './summary-window.ts';
 
 export interface SummaryOptions {idleThreshold:number;agentIdleThreshold:number;}
@@ -14,6 +14,7 @@ export interface DayWindow {
  /** Changes whenever `raw` changes. */
  version:number;
  lastActivity?:CaptureEvent;maxObservedAt:number;checkedAt:number;
+ live?:LiveSummaryState;
 }
 // Beyond this many unseen rows a recompute on demand is cheaper than replaying them.
 const maxSyncRows=20_000;
@@ -23,8 +24,8 @@ const maxCachedDays=16;
 /**
  * Per-day summaries over bounded windows, so a day costs about one day of
  * events however long the history grows. New rows only touch the days whose
- * window they fall into: Mac activity samples append in place, anything else
- * drops that day for a recompute on its next read. Closed days stay cached.
+ * window they fall into: Ordered hooks reuse settled human intervals and replay bounded agent evidence;
+ * unsupported updates drop that day for a recompute. Closed days stay cached.
  */
 export class DaySummaries {
  private entries=new Map<string,DayWindow>();
@@ -38,7 +39,8 @@ export class DaySummaries {
  /** Range reports no longer need the completed day's large raw graph. */
  has(date:string){return this.entries.has(date);}
  release(date:string){this.entries.delete(date);}
- private trim(){while(this.entries.size>1&&(this.entries.size>maxCachedDays||[...this.entries.values()].reduce((n,entry)=>n+this.retainedBytes(entry),0)>this.budgetBytes))this.entries.delete(this.entries.keys().next().value!);}
+ private trim(){for(const entry of this.entries.values())if(entry.live&&this.retainedBytes(entry)>this.budgetBytes){delete entry.live;this.sizes.delete(entry);}
+  while(this.entries.size>1&&(this.entries.size>maxCachedDays||[...this.entries.values()].reduce((n,entry)=>n+this.retainedBytes(entry),0)>this.budgetBytes))this.entries.delete(this.entries.keys().next().value!);}
  private projection?:PeriodProjection;
  private store:EventStore;private options:()=>SummaryOptions;
  /** Number of full window computations, for tests and diagnostics. */
@@ -65,10 +67,17 @@ export class DaySummaries {
   if(last===this.seenRowid)return;
   const rows=this.store.eventsAfterRowid(this.seenRowid);
   this.seenRowid=Math.max(last,rows.at(-1)?.rowid??last);
-  const events=rows.map(row=>row.event),idleThreshold=this.options().idleThreshold;
+  const events=rows.map(row=>row.event),options=this.options(),idleThreshold=options.idleThreshold;
   for(const [date,entry] of [...this.entries]){
    const relevant=events.filter(event=>inWindow(event,entry.bounds));
    if(!relevant.length)continue;
+   if(entry.live){
+    const result=appendLiveSummary(entry.live,relevant,options);
+    if(!result){this.entries.delete(date);continue;}
+    applyTerminalTitles(result.summary,result.state.evidence,handles=>this.store.latestTerminals(handles));
+    entry.raw=result.summary;entry.live=result.state;entry.lastActivity=result.state.lastActivity;
+    entry.maxObservedAt=result.state.maxObservedAt;entry.version=++this.version;continue;
+   }
    const ordered=entry.maxObservedAt!==-Infinity&&relevant.every((event,index)=>isActivitySample(event)&&event.observedAt>=(index?relevant[index-1]!.observedAt:entry.maxObservedAt));
    const value=ordered?appendActivitySummary(entry.raw,entry.lastActivity,relevant,idleThreshold):null;
    if(!value){this.entries.delete(date);continue;}
@@ -94,7 +103,8 @@ export class DaySummaries {
    if(isActivitySample(event))lastActivity=event;
    else if(resetsActivity(event))lastActivity=undefined;
   }
-  const entry:DayWindow={date,from,to,bounds,raw,version:++this.version,lastActivity,maxObservedAt,checkedAt:Date.now()};
+  const live=events.length?createLiveSummary(events,raw,{idleThreshold,agentIdleThreshold},Math.min(this.budgetBytes/4,4*1024*1024))??undefined:undefined;
+  const entry:DayWindow={date,from,to,bounds,raw,version:++this.version,lastActivity,maxObservedAt,checkedAt:Date.now(),live};
   this.entries.set(date,entry);
   this.trim();
   return entry;
