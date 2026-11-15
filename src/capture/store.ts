@@ -1,7 +1,7 @@
 import{ensureIngestionJournal}from'./ingestion-journal.ts';
 import {ensureBillingSchema,previewBillingArchive,importBillingArchive} from './billing-store.ts';
 import {hydrateTaskStarts} from './reported-work.ts';
-import {archiveName,compressArchive,withReadableArchive,recordArchive,resolveArchivePath} from './archive-storage.ts';
+import {archiveName,compressArchive,withReadableArchive,recordArchive,resolveArchivePath,createArchiveStaging} from './archive-storage.ts';
 import {checkEventDatabase,openEventDatabase,createPackedEventSchema,insertEventRow,isPackedEventDatabase} from './event-database.ts';
 import { DatabaseSync,backup } from 'node:sqlite';
 import { mkdirSync, chmodSync, openSync, closeSync,existsSync,lstatSync,statSync,renameSync,rmSync,readdirSync,unlinkSync,statfsSync } from 'node:fs';
@@ -361,7 +361,7 @@ export class EventStore {
     if(existsSync(folder)&&lstatSync(folder).isSymbolicLink())throw new Error('Export folder must not be a symlink');
     mkdirSync(folder,{recursive:true,mode:0o700});
     const stamp=new Date().toISOString().replaceAll(/[:.]/g,'-');
-    const path=join(folder,`agent-time-${stamp}-${randomUUID()}.sqlite`),temp=path+'.tmp';
+    const path=join(folder,`agent-time-${stamp}-${randomUUID()}.sqlite`),staging=createArchiveStaging(folder),temp=staging.path;
     try{
       const volume=statfsSync(output),available=Number(volume.bavail)*Number(volume.bsize),pages=Number(this.db.prepare('PRAGMA page_count').get()?.page_count||0),pageSize=Number(this.db.prepare('PRAGMA page_size').get()?.page_size||4096);
       if(available<pages*pageSize*1.1+1024**3)throw new Error('Not enough free space to create a verified archive while keeping 1 GB free');
@@ -373,7 +373,7 @@ export class EventStore {
       chmodSync(temp,0o600);renameSync(temp,path);
       recordArchive(output,path.split('/').at(-1)!,'manual');
       return {path,bytes:statSync(path).size,events};
-    }catch(error){if(existsSync(temp))rmSync(temp);throw error;}
+    }catch(error){if(existsSync(temp))rmSync(temp);throw error;}finally{staging.cleanup();}
   }
   listArchives(output:string):Array<{id:string;bytes:number}>{
     const folder=join(output,'exports');
