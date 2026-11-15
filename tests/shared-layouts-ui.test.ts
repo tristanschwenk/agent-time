@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import{fileURLToPath}from'node:url';
 import { compileScript, parse } from '@vue/compiler-sfc';
-import { createRenderer, h, ref, type Component } from 'vue';
+import { createRenderer, h, ref, nextTick, type Component } from 'vue';
 import ts from 'typescript';
 
 type Node = { type: string; text: string; children: Node[]; parent: Node | null; props: Record<string, any> };
@@ -26,7 +27,8 @@ function component(name: string): Component {
   const compiled = compileScript(parsed.descriptor, { id: name, inlineTemplate: true });
   const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports: Record<string, any> = {};
-  new Function('require', 'exports', code)(createRequire(import.meta.url), exports);
+  const require=createRequire(import.meta.url);
+  new Function('require', 'exports', code)((path:string)=>path.endsWith('.vue')?{default:component(path.replace('./','').replace('.vue',''))}:require(path.startsWith('.')?fileURLToPath(new URL('../src/ui/'+path,import.meta.url)):path), exports);
   return exports.default;
 }
 function all(root: Node): Node[] { return [root, ...root.children.flatMap(all)]; }
@@ -77,4 +79,13 @@ test('billing explanation displays saved totals without recomputing or modifying
   assert.deepEqual(steps.map(step=>all(step).find(item=>item.type==='strong')!.props.title),[8000,120,8120,40,8160].map(n=>`${n.toLocaleString(undefined,{maximumFractionDigits:3})} seconds`));
   const text=items.map(item=>item.text).join(' ');assert.match(text,/One started minute/);assert.match(text,/not additional deductions/);assert.match(text,/7.25 EUR/);assert.match(text,/Saved evidence explanation/);assert.match(text,/fixture-version/);
   assert.deepEqual(report,before);app.unmount();
+});
+
+test('history preparation renders real period progress, completion and a compact navigation action',async()=>{
+ const Preparation=component('HistoryPreparation'),root=node('root'),status=ref({phase:'preparing',cursor:400000,sourceCursor:500000,preparedDays:2,pendingDays:3,scanned:0,prepared:0,history:{projects:1,total:4,prepared:2,pending:2}});
+ const app=renderer.createApp({render:()=>h(Preparation,{status:status.value})});app.mount(root);
+ let nodes=all(root);assert.equal(nodes.find(n=>n.type==='progress')!.props.value,2);assert.equal(nodes.find(n=>n.type==='progress')!.props.max,4);assert.equal(nodes.find(n=>n.type==='section')!.props.role,'status');assert.match(nodes.map(n=>n.text).join(' '),/2 \/ 4 daily periods/);
+ status.value={...status.value,history:{projects:1,total:4,prepared:4,pending:0},pendingDays:1};await nextTick();assert.equal(all(root).some(n=>n.type==='progress'),false);assert.match(all(root).map(n=>n.text).join(' '),/Report history ready/);
+ status.value={...status.value,phase:'indexing'};await nextTick();assert.equal(all(root).find(n=>n.type==='progress')!.props.value,undefined);app.unmount();
+ let opened=0;const compact=renderer.createApp({render:()=>h(Preparation,{status:status.value,compact:true,onOpen:()=>opened++})});compact.mount(root);const button=all(root).find(n=>n.type==='button')!;button.props.onClick();assert.equal(opened,1);compact.unmount();
 });

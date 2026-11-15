@@ -3,6 +3,7 @@ import {capturePageScroll, restorePageScroll} from './page-scroll.ts';
 import WorkspacePeriodPicker from './WorkspacePeriodPicker.vue';
 import WorkspaceFilterBar from './WorkspaceFilterBar.vue';
 import LoadingStatus from './LoadingStatus.vue';
+import HistoryPreparation from './HistoryPreparation.vue';
 import {backgroundActivities,dismissBackgroundActivity} from './background-activity.ts';
 import {storagePressureDetail} from '../capture/storage-pressure-status.ts';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
@@ -424,6 +425,7 @@ onUnmounted(() => {
             {{ store.captureLabel }}
           </button>
           <span v-if="store.status?.running && !store.status.storageCare?.paused && (store.status.workingAgents || 0) > 0">{{ store.status.workingAgents }} {{ store.status.workingAgents === 1 ? 'agent working' : 'agents working' }}</span>
+          <HistoryPreparation compact :status="store.status?.ingestion" @open="navigate('billing')" />
           <div class="background-activities" role="status" aria-live="polite">
             <template v-for="activity in backgroundActivities" :key="activity.id">
               <button class="capture-status-link" @click="activity.reveal?.(); activity.target === 'billing' ? navigate('billing') : activity.target === 'time' ? navigate('weekly') : store.openSettings('data'); if (activity.done) dismissBackgroundActivity(activity.id)">{{ activity.label }}<span v-if="activity.detail"> · {{ activity.detail }}</span></button>

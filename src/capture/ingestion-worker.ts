@@ -2,7 +2,7 @@ import{Worker,isMainThread,parentPort,workerData}from'node:worker_threads';impor
 /** Long-lived worker: source proof writes and app requests never wait for a reducer. */
 export class IngestionCoordinator{
  private output:string;private worker?:Worker;private timer?:ReturnType<typeof setTimeout>;private closed=false;private active?:Promise<IngestionProgress>;private resolve?:((v:IngestionProgress)=>void);private reject?:((e:Error)=>void);
- private value:IngestionProgress={phase:'idle',cursor:0,sourceCursor:0,preparedDays:0,pendingDays:0,scanned:0,prepared:0};
+ private value:IngestionProgress={phase:'indexing',cursor:0,sourceCursor:0,preparedDays:0,pendingDays:0,scanned:0,prepared:0};
  constructor(output:string){this.output=output;}
  status(){return {...this.value};}
  wake(delay=100){if(this.closed||this.timer||this.active)return;this.timer=setTimeout(()=>{this.timer=undefined;void this.run().then(value=>{if(!this.closed)this.wake((value.scanned>0||value.prepared>0)&&value.phase!=='paused'&&value.phase!=='failed'?25:5000);}).catch(()=>{if(!this.closed)this.wake(5000);});},delay);this.timer.unref?.();}

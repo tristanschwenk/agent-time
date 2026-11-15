@@ -11,6 +11,7 @@ import {useStore} from './store.ts';
 import {humanizeError} from './errors.ts';
 import {toast} from './toast.ts';
 import LoadingStatus from './LoadingStatus.vue';
+import HistoryPreparation from './HistoryPreparation.vue';
 import {startBackgroundActivity,clearCompletedBackgroundActivities} from './background-activity.ts';
 
 const store=useStore();
@@ -135,6 +136,7 @@ onActivated(()=>{if(!loading.value&&projectRevision!==store.billingProjectRevisi
   <section class="day-content app-page billing-page billing-embedded">
     <div class="billing-content">
       <SectionHeading class="day-heading" title="Billing reports" description="Calculate project billing, review the evidence, and export a saved report." :level="2" size="section"><template #actions><AppButton @click="configure">Edit policy</AppButton></template></SectionHeading>
+      <HistoryPreparation :status="store.status.value?.ingestion" />
       <LoadingStatus v-if="loading" label="Loading billing projects" detail="Reading your saved projects and billing rules." />
       <template v-else>
 <p v-if="projects.length&&!scopedProjects.length" class="notice">No billable project is configured for this repository filter. Choose All activity or configure its billing project.</p>

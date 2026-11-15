@@ -1,3 +1,4 @@
+import type{IngestionProgress}from'../capture/ingestion-maintenance.ts';
 import{decodeHome,type HomeWire}from'../capture/home-wire.ts';
 import type { HumanDecisionSegment } from '../capture/human-review.ts';
 import type {StoragePressureNotice} from '../capture/storage-pressure-status.ts';
@@ -50,6 +51,7 @@ export interface CaptureSourceInfo {
   usageSetting?: string;
 }
 export interface CaptureStatus {
+  ingestion?:IngestionProgress|null;
   storageCare?:{at:number|null;error:string|null;paused:boolean;pressure?:StoragePressureNotice};
   running: boolean;
   orcaAvailable: boolean;

@@ -41,3 +41,8 @@ test('physical source timestamp corrections dirty both affected windows even wit
  const old=prepared(),next=prepared('2026-11-10'),middle=prepared('2026-10-29');store.put(makeEvent('macos','activity',{eventId:'move',observedAt:old.value.start+100}));model.sync(store.database);for(const value of [old,next,middle])model.put(store.database,'p',value.value.date,'config',value);
  store.database.prepare('UPDATE events SET observed_at=? WHERE event_id=?').run(next.value.start+100,'move');assert(model.sync(store.database).caughtUp);assert.deepEqual(model.database.prepare('SELECT date FROM credited_slices WHERE dirty=1 ORDER BY date').all().map(r=>r.date),[old.value.date,next.value.date]);
  }finally{model.close();store.close();rmSync(root,{recursive:true,force:true});}});
+
+test('historical preparation counts use closed periods of active projects and exclude live work',()=>{const{root,store,model}=fixture();try{
+ model.sync(store.database);for(const date of ['2026-10-20','2026-10-21','2026-10-22'])model.put(store.database,'p',date,'config',prepared(date));model.put(store.database,'deleted-project','2026-10-20','config',prepared());model.database.prepare("UPDATE credited_slices SET dirty=1 WHERE project='p' AND date='2026-10-20'").run();
+ assert.deepEqual(model.historyStats(Date.parse('2026-10-22T12:00:00Z')/1000,['p']),{projects:1,total:2,prepared:1,pending:1});assert.deepEqual(model.historyStats(Date.parse('2026-10-22T12:00:00Z')/1000,[]),{projects:0,total:0,prepared:0,pending:0});
+ }finally{model.close();store.close();rmSync(root,{recursive:true,force:true});}});

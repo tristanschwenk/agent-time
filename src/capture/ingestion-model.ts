@@ -84,6 +84,10 @@ export class IngestionModel{
  }
  register(project:string,date:string,config:string,start:number,end:number,idle:number){const key=JSON.stringify([project,date]);this.database.prepare(`INSERT INTO credited_slices(key,project,date,config,start,day_end,read_from,read_to,activity_from,activity_to,dirty,as_of,valid_until) VALUES(?,?,?,?,?,?,?,?,?,?,1,0,0) ON CONFLICT(key) DO UPDATE SET dirty=1,config=excluded.config,start=excluded.start,day_end=excluded.day_end,read_from=excluded.read_from,read_to=excluded.read_to,activity_from=excluded.activity_from,activity_to=excluded.activity_to WHERE config<>excluded.config OR start<>excluded.start OR day_end<>excluded.day_end`).run(key,project,date,config,start,end,start-86400-idle,end+86400+idle,start-60,end+60);}
  buckets(){return this.database.prepare('SELECT bucket FROM ingestion_days ORDER BY bucket').all().map(r=>Number(r.bucket));}
+ historyStats(now:number,projects:string[]){
+  const row=this.database.prepare(`SELECT count(*) total,coalesce(sum(CASE WHEN dirty=0 AND valid_until>? THEN 1 ELSE 0 END),0) prepared FROM credited_slices WHERE day_end<=? AND project IN(SELECT value FROM json_each(?))`).get(now,now,JSON.stringify(projects))!;
+  const total=Number(row.total),prepared=Number(row.prepared);return{projects:projects.length,total,prepared,pending:total-prepared};
+ }
  pending(limit=1){return this.database.prepare('SELECT project,date,config FROM credited_slices WHERE dirty=1 ORDER BY (meta IS NULL) DESC,date DESC,project LIMIT ?').all(limit).map(r=>({project:String(r.project),date:String(r.date),config:String(r.config)}));}
  stats(){const db=this.database;return{toolIndexAvailable:!this.tools.disabled(),prepared:Number(db.prepare('SELECT count(*) n FROM credited_slices WHERE dirty=0').get()!.n),dirty:Number(db.prepare('SELECT count(*) n FROM credited_slices WHERE dirty=1').get()!.n),periods:Number(db.prepare('SELECT count(*) n FROM credited_periods').get()!.n),tools:Number(db.prepare('SELECT count(*) n FROM tool_executions').get()!.n),cursor:this.state()?.rowid??0};}
  put(source:DatabaseSync,project:string,date:string,config:string,prepared:PreparedCreditedInput){
