@@ -1,0 +1,49 @@
+{
+  "date": "2026-11-16",
+  "version": "0.2.0-beta.59",
+  "source": "31b5efc2137fea3bf1df3f52e84426c77d560043",
+  "workflow": "https://github.com/zaosoula/agent-time/actions/runs/43777288797",
+  "workflowConclusion": "success",
+  "ci": {
+    "javascriptTests": 830,
+    "nativeTests": 38,
+    "build": "passed",
+    "productionAuditVulnerabilities": 0
+  },
+  "public": {
+    "version": "0.2.0-beta.59",
+    "source": "31b5efc2137fea3bf1df3f52e84426c77d560043",
+    "artifacts": {
+      "archive": {
+        "bytes": 55850389,
+        "sha256": "fede8436e9231d9796bf54f7b39981864077388d58a3d6aaa32c6a7388cda7eb",
+        "url": "https://agent-time.ezyostudio.com/beta/0.2.0-beta.59/Agent%20Time.app.tar.gz"
+      },
+      "dmg": {
+        "bytes": 55647484,
+        "sha256": "9ea447c087c52ff1f5a3469b01716bc0925ac2edcf57ab6f09f8d9a5d8c723bf",
+        "url": "https://agent-time.ezyostudio.com/install/0.2.0-beta.59/Agent%20Time_0.2.0-beta.59_aarch64.dmg"
+      }
+    },
+    "signatureMatches": true,
+    "landingVersionMatches": true
+  },
+  "packageChecks": {
+    "version": "0.2.0-beta.59",
+    "sourceCommit": "31b5efc2137fea3bf1df3f52e84426c77d560043",
+    "strictDeepSignature": "passed",
+    "appStapledTicket": "passed",
+    "dmgStapledTicket": "passed",
+    "gatekeeperApp": "accepted: Notarized Developer ID",
+    "gatekeeperDmg": "accepted: Notarized Developer ID",
+    "matchingSourceModules": 100,
+    "packagedNodeVersion": "26.13.1",
+    "packagedRuntimeTests": {
+      "passed": 188,
+      "failed": 0
+    },
+    "harness": "Fixture links resolve to packaged modules. Native-helper crash tests resolve the linked helper to its real packaged path before launching it; initial harness-only path mismatch corrected without app changes. Development-only compaction CLI copied into harness."
+  },
+  "installationOnOwnerMac": "not performed",
+  "customerDatabaseUploaded": false
+}
