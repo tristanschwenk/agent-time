@@ -38,7 +38,8 @@ export function applyAgentExclusions(summary:Summary,exclusions:readonly AgentTi
  const hasGrouped=summary.intervals.some(i=>i.state==='grouped'),day=summary.mainAgentSeconds!==undefined;
  const activity=(items:Interval[])=>{
   const byKey=new Map<string,{child:boolean;ranges:Range[]}>();
-  for(const i of items.filter(i=>hasGrouped?i.state==='grouped':i.state==='running'||i.state==='turn')){
+  // Task-counter credit fills gaps beside grouped activity, so it counts alongside it.
+  for(const i of items.filter(i=>hasGrouped?i.state==='grouped'||i.attributionSource==='task-counter':i.state==='running'||i.state==='turn')){
    const key=agentSessionKey(i),entry=byKey.get(key)||{child:Boolean(i.child),ranges:[]};entry.ranges.push([i.start,i.end]);byKey.set(key,entry);
   }
   return [...byKey].map(([key,{child,ranges}])=>({key,child,ranges:hasGrouped?ranges:groupIntervals(ranges)}));

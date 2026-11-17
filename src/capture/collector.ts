@@ -21,6 +21,7 @@ import { callOrca,orcaCliAvailable } from './orca.ts';
 import { importSpool,spoolStatus,acknowledgeSpoolOverflow,claimSpoolOverflow,spoolOverflowReason } from './hooks.ts';
 import {validAgentReport} from '../mcp/report.ts';
 import {creditTaskCounters,reportedWorkForDay} from './reported-work.ts';
+import {applyAgentExclusions,type AgentTimeExclusion} from './agent-exclusions.ts';
 import {applyReportedResources,reportedResources,type ReportedResource} from './reported-resources.ts';
 import { normalizeActivity,MacActivityProbe } from './macos.ts';
 import {resolveOrcaTab,tabIndexFromTerminalList,type FocusedOrcaTab} from './orca-focus.ts';
@@ -95,12 +96,12 @@ export class Collector {
   private lastError:string|null=null; private macos:Record<string,unknown>|null=null; private lockOwned=false;
   private failedPoller:string|null=null; private macError:string|null=null;
   private stopping:Promise<ReturnType<Collector['status']>>|undefined;
-  private surfaces:CaptureSettings={...defaultSettings};private resourceCache?:{at:number;stamp:string;expires:number;signature:string;events?:CaptureEvent[];value:Map<string,ReportedResource>};private summaryTokens=new WeakMap<Summary,string>();private summaryTokenCount=0;private summaryEpoch=Date.now().toString(36);private derivedMemo?:{day:Summary;resources:Map<string,ReportedResource>;counters:string;value:Summary}; private revision=0;
+  private surfaces:CaptureSettings={...defaultSettings};private resourceCache?:{at:number;stamp:string;expires:number;signature:string;events?:CaptureEvent[];value:Map<string,ReportedResource>};private summaryTokens=new WeakMap<Summary,string>();private summaryTokenCount=0;private summaryEpoch=Date.now().toString(36);private derivedMemo?:{day:Summary;resources:Map<string,ReportedResource>;counters:string;exclusions:AgentTimeExclusion[];value:Summary}; private revision=0;
   private surfaceHistory:CaptureEvent[]=[];
   /** Whole-history summary, only for callers that ask without a date. */
   private summaryCache:{revision:string;at:number;value:Summary}|undefined;
   private days:DaySummaries;
-  private reviewCache:{revision:string;decisions:HumanDecision[];splits:HumanSplit[]}|undefined;
+  private reviewCache:{revision:string;decisions:HumanDecision[];splits:HumanSplit[];exclusions:AgentTimeExclusion[]}|undefined;
   private periodProgress=new PeriodProgress();
   periodReviewProgress(id:string){return this.periodProgress.get(id);}
   private homeSnapshots=new DaySnapshotCache(4*1024*1024,3);
@@ -684,7 +685,7 @@ export class Collector {
     // Review edits by this process bump the store's revision; edits by another
     // process change PRAGMA data_version. Both are cheap to check.
     const revision=this.store.dependencyRevision('review');
-    if(this.reviewCache?.revision!==revision)this.reviewCache={revision,decisions:this.store.humanDecisions(),splits:this.store.humanSplits()};
+    if(this.reviewCache?.revision!==revision)this.reviewCache={revision,decisions:this.store.humanDecisions(),splits:this.store.humanSplits(),exclusions:this.store.agentTimeExclusions()};
     return this.reviewCache;
   }
   private daySummary(date:string,maxAgeMs=0,persistedKey=this.persistedHomeKey(date)):Summary{
@@ -694,15 +695,17 @@ export class Collector {
     const hadDay=cached?.day;
     const day=cached?.value!==window?summaryForDate(window,date):cached.day||=summaryForDate(window,date);
     if(cached&&!hadDay&&cached.day)cached.bytes=undefined;
-    const resources=this.resources(),reports=this.surfaces.countTaskCounters?this.reportedWork(date):[],counters=JSON.stringify(reports);
+    const resources=this.resources(),reports=this.surfaces.countTaskCounters?this.reportedWork(date):[],counters=JSON.stringify(reports),exclusions=this.reviewData().exclusions;
     // Same inputs return the same object, so its version token stays stable.
     const memo=this.derivedMemo;
-    if(memo&&memo.day===day&&memo.resources===resources&&memo.counters===counters)return memo.value;
+    if(memo&&memo.day===day&&memo.resources===resources&&memo.counters===counters&&memo.exclusions===exclusions)return memo.value;
     const resourced=applyReportedResources(day,resources);
     // Counters are opt-in credit and stay open while running, so they are applied per read.
     const bounds=localDayBounds(date);
-    const value=reports.length?creditTaskCounters(resourced,reports.map(item=>({...item,start:Math.max(item.start,bounds.from),end:Math.min(item.end,bounds.to)}))):resourced;
-    this.derivedMemo={day,resources,counters,value};
+    const credited=reports.length?creditTaskCounters(resourced,reports.map(item=>({...item,start:Math.max(item.start,bounds.from),end:Math.min(item.end,bounds.to)}))):resourced;
+    // After counters: they fill gaps in an agent's ranges and would re-credit a removed range.
+    const value=applyAgentExclusions(credited,exclusions);
+    this.derivedMemo={day,resources,counters,exclusions,value};
     if(persistedKey&&persistedKey===this.persistedHomeKey(date))this.projection.putView('review',date,persistedKey,value);
     return value;
   }
@@ -736,10 +739,11 @@ export class Collector {
    * reports use it; everything the app polls reads bounded day summaries.
    */
   summary(maxAgeMs=0):Summary {
-    const revision=this.store.revision();
+    // Review edits in this process do not change the store revision.
+    const revision=`${this.store.revision()}:${this.store.dependencyRevision('review')}`;
     if(this.summaryCache&&(this.summaryCache.revision===revision||maxAgeMs>0&&Date.now()-this.summaryCache.at<maxAgeMs))return this.summaryCache.value;
     const events=this.store.events();
-    const summary=applyHumanDecisions(summarize(events,{...this.summaryOptions(),alreadyUnique:true}),this.store.humanDecisions(),this.store.humanSplits());
+    const summary=applyAgentExclusions(applyHumanDecisions(summarize(events,{...this.summaryOptions(),alreadyUnique:true}),this.store.humanDecisions(),this.store.humanSplits()),this.store.agentTimeExclusions());
     applyTerminalTitles(summary,events);
     this.summaryCache=estimatedBytes(summary)<=32*1024*1024?{revision,at:Date.now(),value:summary}:undefined;return summary;
   }
