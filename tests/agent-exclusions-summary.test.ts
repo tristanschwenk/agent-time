@@ -86,3 +86,16 @@ test('undo restores the original totals exactly',()=>withCollector('undo',c=>{
  assert.deepEqual(agentTotals(after),agentTotals(before));
  assert.deepEqual(after.sessions.map(s=>s.seconds),before.sessions.map(s=>s.seconds));
 }));
+
+for(const form of ['session key','interval key'] as const)test(`a correction keyed by the ${form} removes a standalone task-counter session`,()=>withCollector(`standalone-${form.split(' ')[0]}`,c=>{
+ c.updateSettings({countTaskCounters:true});
+ const start=makeEvent('agent_report','task_start',{provider:'codex',hostId:'local',observedAt:at(10),data:{name:'Solo',leaseSeconds:7200}});
+ c.store.put(start);c.store.put(makeEvent('agent_report','task_stop',{provider:'codex',hostId:'local',observedAt:at(11),data:{taskCounterId:start.eventId}}));
+ const before=c.summaryForDate(date),session=before.sessions.find(s=>s.key===`task-counter:${start.eventId}`)!;
+ assert.ok(session&&session.seconds>=3600&&before.agentSeconds>=3600);
+ const counted=before.intervals.find(i=>i.attributionSource==='task-counter')!;
+ c.store.addAgentTimeExclusion({executionKey:form==='session key'?session.key:agentSessionKey(counted),date,start:at(10),end:at(11)});
+ const after=c.summaryForDate(date);
+ assert.equal(after.agentSeconds,0);
+ assert.equal(after.sessions.find(s=>s.key===session.key)?.seconds,0);
+}));

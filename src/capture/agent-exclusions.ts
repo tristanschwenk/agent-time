@@ -20,8 +20,10 @@ export function subtractRanges(source:Range[],cuts:Range[]):Range[]{
 
 /** Cut excluded ranges out of agent intervals and lower the totals by the minute credit they carried. */
 export function applyAgentExclusions(summary:Summary,exclusions:readonly AgentTimeExclusion[]):Summary{
+ // A correction may name a session by its `key` (task-counter sessions use `task-counter:<id>`) or by its intervals' agentSessionKey.
+ const alias=new Map<string,string>();for(const s of summary.sessions)if(s.key!==agentSessionKey(s))alias.set(s.key,agentSessionKey(s));
  const cuts=new Map<string,Range[]>();
- for(const x of exclusions)if(x.undoneAt===undefined&&x.end>x.start)cuts.set(x.executionKey,[...cuts.get(x.executionKey)||[],[x.start,x.end]]);
+ for(const x of exclusions)if(x.undoneAt===undefined&&x.end>x.start){const key=alias.get(x.executionKey)??x.executionKey;cuts.set(key,[...cuts.get(key)||[],[x.start,x.end]]);}
  if(!cuts.size)return summary;
  const hit=new Set<string>();
  const intervals:Interval[]=[];
@@ -59,7 +61,7 @@ export function applyAgentExclusions(summary:Summary,exclusions:readonly AgentTi
  const elapsed=minuteCreditSeconds([...flat(before,!day),...human])-minuteCreditSeconds([...flat(after,!day),...human]);
  const lower=(value:number,delta:number)=>Math.max(0,value-delta);
  const result:Summary={...summary,intervals,
-  sessions:summary.sessions.map(s=>sessionDelta.has(s.key)?{...s,seconds:lower(s.seconds,sessionDelta.get(s.key)!)}:s),
+  sessions:summary.sessions.map(s=>{const delta=sessionDelta.get(s.key)??sessionDelta.get(agentSessionKey(s));return delta===undefined?s:{...s,seconds:lower(s.seconds,delta)};}),
   agentSeconds:lower(summary.agentSeconds,main+(summary.mainAgentSeconds!==undefined?child:0)),childAgentSeconds:lower(summary.childAgentSeconds,child),elapsedSeconds:lower(summary.elapsedSeconds,elapsed)};
  if(summary.mainAgentSeconds!==undefined)result.mainAgentSeconds=lower(summary.mainAgentSeconds,main);
  if(summary.agentWallSeconds!==undefined)result.agentWallSeconds=lower(summary.agentWallSeconds,wall);
