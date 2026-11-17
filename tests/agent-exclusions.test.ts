@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyAgentExclusions,subtractRanges,type AgentTimeExclusion} from '../src/capture/agent-exclusions.ts';
 import {agentSessionKey} from '../src/capture/session-identity.ts';
-import type {Interval,Summary} from '../src/capture/events.ts';
+import {summarize} from '../src/capture/correlate.ts';
+import type {CaptureEvent,Interval,Summary} from '../src/capture/events.ts';
 
 const id={hostId:'h',provider:'codex',sessionId:'s1'};
 const key=agentSessionKey(id);
@@ -39,7 +40,7 @@ test('main agent exclusion does not touch subagents',()=>{
  const r=applyAgentExclusions(s,[ex(0,3600)]);
  assert.deepEqual(agent(r).map(i=>i.child),[true]);
  assert.equal(r.childAgentSeconds,3600);assert.equal(r.agentSeconds,3600);assert.equal(r.mainAgentSeconds,0);
- assert.equal(r.agentWallSeconds,3600);assert.equal(r.elapsedSeconds,3600);
+ assert.equal(r.agentWallSeconds,3600);assert.equal(r.elapsedSeconds,0);
 });
 test('dispatch execution matched by dispatch key',()=>{
  const s=summary([iv(0,3600,{dispatchId:'d1'})]);
@@ -80,4 +81,40 @@ test('child exclusion lowers agentSeconds only on day-shaped summaries',()=>{
  const d=applyAgentExclusions(day,[ex(0,1800,childKey)]),r=applyAgentExclusions(raw,[ex(0,1800,childKey)]);
  assert.equal(d.childAgentSeconds,1800);assert.equal(d.agentSeconds,1800);
  assert.equal(r.childAgentSeconds,1800);assert.equal(r.agentSeconds,3600);
+});
+test('raw running time beyond the credited grouped span does not change totals',()=>{
+ const s=summary([iv(0,3600,{state:'running'}),iv(0,600)],{agentSeconds:600,mainAgentSeconds:600,agentWallSeconds:600,elapsedSeconds:600});
+ s.sessions[0]!.seconds=600;
+ assert.equal(applyAgentExclusions(s,[ex(1000,2000)]).agentSeconds,600);
+ const r=applyAgentExclusions(s,[ex(1000,2000)]);
+ assert.deepEqual(totals(r),Array(5).fill(600));
+ assert.deepEqual(r.intervals.filter(i=>i.state==='running').map(i=>[i.start,i.end]),[[0,1000],[2000,3600]]);
+ const cut=applyAgentExclusions(s,[ex(0,300)]);
+ assert.deepEqual(totals(cut),Array(5).fill(300));
+});
+test('without grouped intervals credit uses the daily 60 second merge gap',()=>{
+ const s=summary([iv(0,100,{state:'running'}),iv(150,300,{state:'turn'})],{agentSeconds:300,mainAgentSeconds:300,agentWallSeconds:300,elapsedSeconds:300});
+ s.sessions[0]!.seconds=300;
+ const r=applyAgentExclusions(s,[ex(100,150)]);
+ assert.deepEqual(totals(r),Array(5).fill(300));
+ assert.deepEqual(totals(applyAgentExclusions(s,[ex(0,100)])),Array(5).fill(180));
+});
+test('day-shaped elapsed ignores subagents, raw-shaped elapsed includes them',()=>{
+ const child={child:true,agentId:'a1'},childKey=agentSessionKey({...id,...child});
+ const base=summary([iv(0,600),iv(0,3600,child)],{agentWallSeconds:3600,elapsedSeconds:600});
+ const d=applyAgentExclusions(base,[ex(0,3600,childKey)]);
+ assert.equal(d.elapsedSeconds,600);assert.equal(d.agentWallSeconds,600);
+ const raw=applyAgentExclusions({...base,mainAgentSeconds:undefined,agentWallSeconds:undefined,elapsedSeconds:3600},[ex(0,3600,childKey)]);
+ assert.equal(raw.elapsedSeconds,600);
+});
+test('a real summarize() result keeps totals when only the idle tail is cut',()=>{
+ const root={sessionId:'s1',terminalHandle:'t1',hostId:'local',provider:'codex'};
+ const ev=(eid:string,t:number,kind:string):CaptureEvent=>({eventId:eid,source:'hook',kind,observedAt:t,monotonicAt:t,collectorEpoch:'a',...root});
+ const s=summarize([ev('p',0,'prompt_submitted'),ev('stop',60,'response_stop'),ev('p2',1000,'prompt_submitted'),ev('stop2',1100,'response_stop')]);
+ const k=s.sessions[0]!.key,gaps=s.intervals.filter(i=>i.state==='grouped');
+ assert.ok(gaps.length>0);
+ const quiet=applyAgentExclusions(s,[ex(300,900,k)]);
+ assert.equal(quiet.agentSeconds,s.agentSeconds);assert.equal(quiet.sessions[0]!.seconds,s.sessions[0]!.seconds);
+ const cut=applyAgentExclusions(s,[ex(0,60,k)]);
+ assert.equal(cut.agentSeconds,s.agentSeconds-60);assert.equal(cut.sessions[0]!.seconds,s.sessions[0]!.seconds-60);
 });

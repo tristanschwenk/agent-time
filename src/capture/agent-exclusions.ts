@@ -1,11 +1,10 @@
 import type {Interval,Summary} from './events.ts';
-import {minuteCreditSeconds} from './correlate.ts';
+import {groupIntervals,minuteCreditSeconds} from './correlate.ts';
 import {agentSessionKey} from './session-identity.ts';
 
 /** A user-removed time range of one agent execution (`executionKey` is an `agentSessionKey`). */
 export interface AgentTimeExclusion {id:string;executionKey:string;date:string;start:number;end:number;createdAt:number;undoneAt?:number}
 type Range=[number,number];
-const credited=new Set<Interval['state']>(['running','turn','grouped']);
 const ranges=(items:Interval[]):Range[]=>items.map(i=>[i.start,i.end]);
 
 /** Remove `cuts` from `ranges`; the result is sorted and non-overlapping. */
@@ -35,18 +34,28 @@ export function applyAgentExclusions(summary:Summary,exclusions:readonly AgentTi
   for(const [start,end] of parts)intervals.push({...interval,start,end});
  }
  if(!hit.size)return summary;
- const agentOf=(items:Interval[])=>items.filter(i=>credited.has(i.state));
- const before=agentOf(summary.intervals),after=agentOf(intervals);
+ // Credit mirrors dailyTotals: grouped intervals alone when present, else running/turn passed through groupIntervals.
+ const hasGrouped=summary.intervals.some(i=>i.state==='grouped'),day=summary.mainAgentSeconds!==undefined;
+ const activity=(items:Interval[])=>{
+  const byKey=new Map<string,{child:boolean;ranges:Range[]}>();
+  for(const i of items.filter(i=>hasGrouped?i.state==='grouped':i.state==='running'||i.state==='turn')){
+   const key=agentSessionKey(i),entry=byKey.get(key)||{child:Boolean(i.child),ranges:[]};entry.ranges.push([i.start,i.end]);byKey.set(key,entry);
+  }
+  return [...byKey].map(([key,{child,ranges}])=>({key,child,ranges:hasGrouped?ranges:groupIntervals(ranges)}));
+ };
+ const before=activity(summary.intervals),after=activity(intervals);
+ const keyCredit=(list:ReturnType<typeof activity>,key:string)=>minuteCreditSeconds(list.filter(e=>e.key===key).flatMap(e=>e.ranges));
  let main=0,child=0;const sessionDelta=new Map<string,number>();
  for(const key of hit){
-  const pick=(items:Interval[])=>ranges(items.filter(i=>agentSessionKey(i)===key));
-  const delta=minuteCreditSeconds(pick(before))-minuteCreditSeconds(pick(after));
+  const delta=keyCredit(before,key)-keyCredit(after,key);
   sessionDelta.set(key,delta);
-  if(summary.intervals.some(i=>i.child&&agentSessionKey(i)===key))child+=delta;else main+=delta;
+  if(before.find(e=>e.key===key)?.child)child+=delta;else main+=delta;
  }
  const human=ranges(summary.intervals.filter(i=>i.state==='human'));
- const wall=minuteCreditSeconds(ranges(before))-minuteCreditSeconds(ranges(after));
- const elapsed=minuteCreditSeconds([...ranges(before),...human])-minuteCreditSeconds([...ranges(after),...human]);
+ const flat=(list:ReturnType<typeof activity>,includeChild:boolean)=>list.filter(e=>includeChild||!e.child).flatMap(e=>e.ranges);
+ const wall=minuteCreditSeconds(flat(before,true))-minuteCreditSeconds(flat(after,true));
+ // Day summaries count only main-session activity in clock time; raw replays include subagents.
+ const elapsed=minuteCreditSeconds([...flat(before,!day),...human])-minuteCreditSeconds([...flat(after,!day),...human]);
  const lower=(value:number,delta:number)=>Math.max(0,value-delta);
  const result:Summary={...summary,intervals,
   sessions:summary.sessions.map(s=>sessionDelta.has(s.key)?{...s,seconds:lower(s.seconds,sessionDelta.get(s.key)!)}:s),
