@@ -89,3 +89,21 @@ test('the panel never uses browser confirm or alert',()=>{
  const source=readFileSync(new URL('../src/ui/ActivityDetailsPanel.vue',import.meta.url),'utf8');
  assert.doesNotMatch(source,/\b(window\.)?(confirm|alert)\s*\(/);
 });
+
+test('editing a span that ends at the next midnight or starts at 00:00 saves',async()=>{
+ const mid=new Date('2026-11-13T00:00:00').getTime()/1000,open=new Date('2026-11-12T00:00:00').getTime()/1000;
+ const a=panel();const late={start:mid-3600,end:mid};
+ a.state.startEdit(late,0);assert.equal(a.state.editEnd.value,'00:00:00');a.state.editStart.value=timeInputValue(mid-1800);
+ await a.state.saveEdit(late);assert.deepEqual(a.calls,[['exclude','codex:s1',mid-3600,mid-1800]]);assert.equal(a.state.error.value,'');
+ const b=panel();const early={start:open,end:open+3600};
+ b.state.startEdit(early,0);b.state.editEnd.value=timeInputValue(open+1800);
+ await b.state.saveEdit(early);assert.deepEqual(b.calls,[['exclude','codex:s1',open+1800,open+3600]]);
+ const src=readFileSync(new URL('../src/ui/ActivityDetailsPanel.vue',import.meta.url),'utf8');assert.doesNotMatch(src,/:(min|max)=/);
+});
+test('a failed second cut closes the form and reports the partial save',async()=>{
+ const {state,store,execution}=panel();let n=0;
+ store.excludeAgentTime=async()=>{if(++n===2)throw new Error('Activity changed; refresh and try again');};
+ state.startEdit(execution.bars[0],0);state.editStart.value=timeInputValue(BASE+20);state.editEnd.value=timeInputValue(BASE+80);
+ await state.saveEdit(execution.bars[0]);
+ assert.equal(state.editing.value,-1);assert.match(state.error.value,/trimmed.*Edit again/);
+});

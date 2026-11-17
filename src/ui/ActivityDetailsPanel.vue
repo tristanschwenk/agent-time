@@ -27,11 +27,15 @@ function askRemove(index:number){editing.value=-1;error.value='';removing.value=
 async function change(work:()=>Promise<void>){if(busy.value)return false;busy.value=true;error.value='';try{await work();return true;}catch(caught){error.value=caught instanceof Error?caught.message:String(caught);return false;}finally{busy.value=false;}}
 async function removeSpan(span:Span){if(await change(()=>store!.excludeAgentTime(executionKey.value,span.start,span.end)))removing.value=-1;}
 async function saveEdit(span:Span){
+ let done=0,partial='';
  const ok=await change(async()=>{
   const date=props.target.kind==='agent'?props.target.date:'',cuts=trimCuts(span,{start:timeInputSeconds(date,editStart.value,span.start),end:timeInputSeconds(date,editEnd.value,span.end)});
-  for(const [start,end] of cuts)await store!.excludeAgentTime(executionKey.value,start,end);
+  for(const [start,end] of cuts){
+   try{await store!.excludeAgentTime(executionKey.value,start,end);done++;}
+   catch(caught){if(done>0)partial=`${start===cuts[0]![0]?'Start':'End'} trimmed; the other edge was not saved. Edit again.`;throw caught;}
+  }
  });
- if(ok)editing.value=-1;
+ if(ok||done>0){editing.value=-1;if(!ok)error.value=partial;}
 }
 async function undoCorrection(item:{id:string}){await change(()=>store!.undoAgentTimeCorrection(item.id));}
 function close(event?:KeyboardEvent){event?.stopPropagation();event?.preventDefault();emit('close');}
@@ -54,8 +58,8 @@ function review(){if(props.target.kind==='human')emit('review',props.target.date
     <ul class="detail-visits"><li v-for="(span,index) in spans" :key="index">
      <div class="interval-row"><span>{{preciseClock(span.start)}}–{{preciseClock(span.end)}}</span><span class="interval-actions"><AppButton compact variant="quiet" :disabled="busy" @click="startEdit(span,index)">Edit</AppButton><AppButton compact variant="quiet" :disabled="busy" @click="askRemove(index)">Delete</AppButton></span></div>
      <form v-if="editing===index" class="interval-edit" @submit.prevent="saveEdit(span)">
-      <label>From <input v-model="editStart" type="time" step="1" required :min="timeInputValue(span.start)" :max="timeInputValue(span.end)" /></label>
-      <label>To <input v-model="editEnd" type="time" step="1" required :min="timeInputValue(span.start)" :max="timeInputValue(span.end)" /></label>
+      <label>From <input v-model="editStart" type="time" step="1" required /></label>
+      <label>To <input v-model="editEnd" type="time" step="1" required /></label>
       <AppButton compact variant="primary" type="submit" :disabled="busy">Save</AppButton><AppButton compact @click="editing=-1">Cancel</AppButton>
      </form>
      <div v-if="removing===index" class="interval-edit" role="group" aria-label="Confirm removal"><span>Remove this time?</span><AppButton compact variant="danger" :disabled="busy" @click="removeSpan(span)">Remove</AppButton><AppButton compact :disabled="busy" @click="removing=-1">Keep</AppButton></div>
