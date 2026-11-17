@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {Collector} from '../src/capture/collector.ts';
@@ -98,4 +98,28 @@ for(const form of ['session key','interval key'] as const)test(`a correction key
  const after=c.summaryForDate(date);
  assert.equal(after.agentSeconds,0);
  assert.equal(after.sessions.find(s=>s.key===session.key)?.seconds,0);
+}));
+
+test('excludeAgentTime clamps to the day, validates the range and round-trips undo',()=>withCollector('api',c=>{
+ hour(c);
+ const total=c.summaryForDate(date).agentSeconds;
+ assert.throws(()=>c.excludeAgentTime(key,date,at(12),at(13)),/Activity changed; refresh and try again/);
+ assert.throws(()=>c.excludeAgentTime(key,date,at(0,21),at(0,21)+10),/Choose a range inside this day/);
+ assert.throws(()=>c.excludeAgentTime('other',date,at(10),at(11)),/Activity changed/);
+ const s=c.excludeAgentTime(key,date,at(10)-7200,at(10)+1800);
+ const [saved]=c.agentTimeExclusions(date);
+ assert.equal(saved!.start,at(10)-7200<new Date(2026,9,22).getTime()/1000?new Date(2026,9,22).getTime()/1000:at(10)-7200);
+ assert.ok(s.agentSeconds<total&&s.agentSeconds>0);
+ assert.equal(c.agentTimeExclusions(next).length,0);
+ const back=c.undoAgentTimeExclusion(saved!.id,date);
+ assert.equal(back.agentSeconds,total);
+ assert.equal(c.agentTimeExclusions(date).length,0);
+ assert.throws(()=>c.undoAgentTimeExclusion(saved!.id,date),/Correction not found/);
+}));
+
+test('excludeAgentTime refuses when another app owns capture',()=>withCollector('lock',(c,output)=>{
+ hour(c);
+ writeFileSync(join(output,'capture.lock'),'x');
+ assert.throws(()=>c.excludeAgentTime(key,date,at(10),at(11)),/Review activity in the app that owns capture/);
+ assert.throws(()=>c.undoAgentTimeExclusion('00000000-0000-4000-8000-000000000000',date),/Review activity in the app that owns capture/);
 }));

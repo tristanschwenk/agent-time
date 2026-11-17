@@ -21,6 +21,7 @@ import { callOrca,orcaCliAvailable } from './orca.ts';
 import { importSpool,spoolStatus,acknowledgeSpoolOverflow,claimSpoolOverflow,spoolOverflowReason } from './hooks.ts';
 import {validAgentReport} from '../mcp/report.ts';
 import {creditTaskCounters,reportedWorkForDay} from './reported-work.ts';
+import {agentSessionKey} from './session-identity.ts';
 import {applyAgentExclusions,type AgentTimeExclusion} from './agent-exclusions.ts';
 import {applyReportedResources,reportedResources,type ReportedResource} from './reported-resources.ts';
 import { normalizeActivity,MacActivityProbe } from './macos.ts';
@@ -552,6 +553,24 @@ export class Collector {
     for(let index=0;index+1<ids.length;index+=2)pairs.push([ids[index]!,ids[index+1]!]);
     this.store.undoReviewAction(id);this.summaryCache=undefined;
     return this.daySummary(this.reviewDate(pairs,date));
+  }
+  agentTimeExclusions(date:string):AgentTimeExclusion[]{localDayBounds(date);return this.store.agentTimeExclusions(date);}
+  /** Removes `[start,end]` (clamped to the local day) from one agent execution's time; returns that day's summary. */
+  excludeAgentTime(executionKey:string,date:string,start:number,end:number):Summary{
+    if(!this.lockOwned&&existsSync(join(this.output,'capture.lock')))throw new Error('Review activity in the app that owns capture');
+    const bounds=localDayBounds(date),from=Math.max(start,bounds.from),to=Math.min(end,bounds.to);
+    if(!(to>from))throw new Error('Choose a range inside this day');
+    const summary=this.daySummary(date),session=summary.sessions.find(item=>item.key===executionKey||agentSessionKey(item)===executionKey);
+    const keys=new Set([executionKey,...summary.sessions.filter(item=>item.key===executionKey).map(agentSessionKey)]);
+    if(!summary.intervals.some(interval=>interval.state!=='human'&&interval.start<to&&interval.end>from&&keys.has(agentSessionKey(interval))))throw new Error('Activity changed; refresh and try again');
+    this.store.addAgentTimeExclusion({executionKey,date,start:from,end:to,hostId:session?.hostId,provider:session?.provider,sessionId:session?.sessionId,agentId:session?.agentId,dispatchId:session?.dispatchId});
+    this.summaryCache=undefined;
+    return this.daySummary(date);
+  }
+  undoAgentTimeExclusion(id:string,date:string):Summary{
+    if(!this.lockOwned&&existsSync(join(this.output,'capture.lock')))throw new Error('Review activity in the app that owns capture');
+    localDayBounds(date);this.store.undoAgentTimeExclusion(id);this.summaryCache=undefined;
+    return this.daySummary(date);
   }
   /** Returns the summary for `date` when given; otherwise for the day the split activity belongs to. */
   setHumanGroupSplit(pairs:Array<[string,string]>,splitAt:number,beforeProject?:string,afterProject?:string,date?:string):Summary{
