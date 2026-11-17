@@ -12,6 +12,7 @@ import {needsHeartbeat,observationKey,observationSignature,workerHeartbeatSecond
 import {randomUUID} from 'node:crypto';
 import{ensureDependencyRevisions,dependencyRevision,evidenceWindowRevision}from'./dependency-revisions.ts';
 import {readWindowEvents,type WindowBounds} from './summary-window.ts';
+import type {AgentTimeExclusion} from './agent-exclusions.ts';
 
 export interface ManualNote {id:string;start:number;end:number;project:string;note:string;createdAt:number;}
 export interface ReviewAction {id:string;at:number;count:number;mode:'assigned'|'unassigned'|'clear'|'split';projectPath:string|null;undoneAt:number|null;canUndo:boolean;eventIds:string[];}
@@ -25,6 +26,7 @@ export function validateManualNote(value:unknown):Omit<ManualNote,'id'|'createdA
  return {start:item.start,end:item.end,project:item.project.trim(),note:item.note.trim()};
 }
 
+const agentTimeExclusion=(row:Record<string,unknown>):AgentTimeExclusion=>({id:String(row.id),executionKey:String(row.execution_key),date:String(row.date),start:Number(row.start),end:Number(row.end),createdAt:Number(row.created_at),...(row.undone_at==null?{}:{undoneAt:Number(row.undone_at)})});
 // A review row groups up to 500 intervals; bulk actions span many rows.
 export const MAX_DECISION_PAIRS=10000;
 export class EventStore {
@@ -41,7 +43,7 @@ export class EventStore {
     this.db = openEventDatabase(path);
     ensureBillingSchema(this.db);
     if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='events'").get())createPackedEventSchema(this.db);
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; CREATE TABLE IF NOT EXISTS events (event_id TEXT PRIMARY KEY, observed_at REAL NOT NULL, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS events_observed_at ON events(observed_at); CREATE INDEX IF NOT EXISTS events_hooks ON events(observed_at) WHERE json_extract(payload,'$.source')='hook'; CREATE INDEX IF NOT EXISTS events_source_recent ON events(json_extract(payload,'$.source')); CREATE TABLE IF NOT EXISTS observation_signatures (identity TEXT PRIMARY KEY, signature TEXT NOT NULL); CREATE TABLE IF NOT EXISTS human_decisions (start_event_id TEXT NOT NULL, end_event_id TEXT NOT NULL, mode TEXT NOT NULL CHECK(mode IN ('assigned','unassigned')), project_path TEXT, decided_at REAL NOT NULL, PRIMARY KEY(start_event_id,end_event_id)); CREATE TABLE IF NOT EXISTS human_splits (start_event_id TEXT NOT NULL,end_event_id TEXT NOT NULL,split_at REAL NOT NULL,before_path TEXT,after_path TEXT,PRIMARY KEY(start_event_id,end_event_id)); CREATE TABLE IF NOT EXISTS review_actions (id TEXT PRIMARY KEY, at REAL NOT NULL, mode TEXT NOT NULL, project_path TEXT, before_json TEXT NOT NULL, after_json TEXT NOT NULL, undone_at REAL); CREATE INDEX IF NOT EXISTS review_actions_at ON review_actions(at DESC); CREATE TABLE IF NOT EXISTS day_reviews (date TEXT PRIMARY KEY,completed_at REAL NOT NULL,fingerprint TEXT NOT NULL); CREATE TABLE IF NOT EXISTS day_review_cache (date TEXT PRIMARY KEY,signature TEXT NOT NULL,snapshot TEXT NOT NULL); CREATE TABLE IF NOT EXISTS manual_notes (id TEXT PRIMARY KEY,start REAL NOT NULL,end REAL NOT NULL,project TEXT NOT NULL,note TEXT NOT NULL,created_at REAL NOT NULL); CREATE INDEX IF NOT EXISTS manual_notes_start ON manual_notes(start)`);
+    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; CREATE TABLE IF NOT EXISTS events (event_id TEXT PRIMARY KEY, observed_at REAL NOT NULL, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS events_observed_at ON events(observed_at); CREATE INDEX IF NOT EXISTS events_hooks ON events(observed_at) WHERE json_extract(payload,'$.source')='hook'; CREATE INDEX IF NOT EXISTS events_source_recent ON events(json_extract(payload,'$.source')); CREATE TABLE IF NOT EXISTS observation_signatures (identity TEXT PRIMARY KEY, signature TEXT NOT NULL); CREATE TABLE IF NOT EXISTS human_decisions (start_event_id TEXT NOT NULL, end_event_id TEXT NOT NULL, mode TEXT NOT NULL CHECK(mode IN ('assigned','unassigned')), project_path TEXT, decided_at REAL NOT NULL, PRIMARY KEY(start_event_id,end_event_id)); CREATE TABLE IF NOT EXISTS human_splits (start_event_id TEXT NOT NULL,end_event_id TEXT NOT NULL,split_at REAL NOT NULL,before_path TEXT,after_path TEXT,PRIMARY KEY(start_event_id,end_event_id)); CREATE TABLE IF NOT EXISTS review_actions (id TEXT PRIMARY KEY, at REAL NOT NULL, mode TEXT NOT NULL, project_path TEXT, before_json TEXT NOT NULL, after_json TEXT NOT NULL, undone_at REAL); CREATE INDEX IF NOT EXISTS review_actions_at ON review_actions(at DESC); CREATE TABLE IF NOT EXISTS day_reviews (date TEXT PRIMARY KEY,completed_at REAL NOT NULL,fingerprint TEXT NOT NULL); CREATE TABLE IF NOT EXISTS day_review_cache (date TEXT PRIMARY KEY,signature TEXT NOT NULL,snapshot TEXT NOT NULL); CREATE TABLE IF NOT EXISTS manual_notes (id TEXT PRIMARY KEY,start REAL NOT NULL,end REAL NOT NULL,project TEXT NOT NULL,note TEXT NOT NULL,created_at REAL NOT NULL); CREATE INDEX IF NOT EXISTS manual_notes_start ON manual_notes(start); CREATE TABLE IF NOT EXISTS agent_time_exclusions (id TEXT PRIMARY KEY,execution_key TEXT NOT NULL,host_id TEXT,provider TEXT,session_id TEXT,agent_id TEXT,dispatch_id TEXT,date TEXT NOT NULL,start REAL NOT NULL,end REAL NOT NULL,created_at REAL NOT NULL,undone_at REAL); CREATE INDEX IF NOT EXISTS agent_time_exclusions_execution ON agent_time_exclusions(execution_key,start); CREATE INDEX IF NOT EXISTS agent_time_exclusions_date ON agent_time_exclusions(date)`);
     this.db.exec("CREATE INDEX IF NOT EXISTS events_reports_at ON events(observed_at) WHERE json_extract(payload,'$.source')='agent_report'");
     this.db.exec("CREATE INDEX IF NOT EXISTS events_session_ends_at ON events(observed_at) WHERE json_extract(payload,'$.kind')='session_end'; CREATE INDEX IF NOT EXISTS events_resources_at ON events(observed_at) WHERE json_extract(payload,'$.source')='agent_report' AND json_extract(payload,'$.kind')='resource'; CREATE INDEX IF NOT EXISTS events_coverage_at ON events(observed_at) WHERE json_extract(payload,'$.kind')='coverage'");
     // Per-provider hook lookups must not walk every hook row when a provider is quiet.
@@ -352,6 +354,22 @@ export class EventStore {
     this.db.prepare('INSERT INTO manual_notes VALUES(?,?,?,?,?,?)').run(saved.id,saved.start,saved.end,saved.project,saved.note,saved.createdAt);
     return saved;
   }
+  /** Active (not undone) agent time exclusions, optionally for one local day. */
+  agentTimeExclusions(date?:string):AgentTimeExclusion[]{
+    const rows=date===undefined?this.db.prepare('SELECT * FROM agent_time_exclusions WHERE undone_at IS NULL ORDER BY start,id').all():this.db.prepare('SELECT * FROM agent_time_exclusions WHERE undone_at IS NULL AND date=? ORDER BY start,id').all(date);
+    return rows.map(agentTimeExclusion);
+  }
+  addAgentTimeExclusion(input:{executionKey:string;date:string;start:number;end:number;hostId?:string;provider?:string;sessionId?:string;agentId?:string;dispatchId?:string}):AgentTimeExclusion{
+    if(!input.executionKey||!/^\d{4}-\d{2}-\d{2}$/.test(input.date)||!Number.isFinite(input.start)||!Number.isFinite(input.end)||input.end<=input.start)throw new Error('Invalid agent time exclusion');
+    const saved:AgentTimeExclusion={id:randomUUID(),executionKey:input.executionKey,date:input.date,start:input.start,end:input.end,createdAt:Date.now()/1000};
+    this.db.prepare('INSERT INTO agent_time_exclusions VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)').run(saved.id,saved.executionKey,input.hostId??null,input.provider??null,input.sessionId??null,input.agentId??null,input.dispatchId??null,saved.date,saved.start,saved.end,saved.createdAt);
+    return saved;
+  }
+  undoAgentTimeExclusion(id:string):AgentTimeExclusion{
+    const row=this.db.prepare('UPDATE agent_time_exclusions SET undone_at=? WHERE id=? AND undone_at IS NULL RETURNING *').get(Date.now()/1000,id);
+    if(!row)throw new Error('Correction not found');
+    return agentTimeExclusion(row);
+  }
   removeManualNote(id:string):boolean{
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))throw new Error('Invalid manual note ID');
     return this.db.prepare('DELETE FROM manual_notes WHERE id=?').run(id).changes>0;
@@ -463,6 +481,7 @@ export class EventStore {
         if(this.db.prepare("SELECT name FROM archive.sqlite_master WHERE type='table' AND name='review_actions'").get())this.db.exec('INSERT OR IGNORE INTO main.review_actions SELECT id,at,mode,project_path,before_json,after_json,undone_at FROM archive.review_actions');
         if(this.db.prepare("SELECT name FROM archive.sqlite_master WHERE type='table' AND name='day_reviews'").get())this.db.exec('INSERT OR IGNORE INTO main.day_reviews SELECT date,completed_at,fingerprint FROM archive.day_reviews');
         this.db.exec('INSERT OR IGNORE INTO main.manual_notes SELECT id,start,end,project,note,created_at FROM archive.manual_notes');
+        if(this.db.prepare("SELECT name FROM archive.sqlite_master WHERE type='table' AND name='agent_time_exclusions'").get())this.db.exec('INSERT OR IGNORE INTO main.agent_time_exclusions SELECT id,execution_key,host_id,provider,session_id,agent_id,dispatch_id,date,start,end,created_at,undone_at FROM archive.agent_time_exclusions');
         if(hasUsage){
           this.db.exec('CREATE TABLE IF NOT EXISTS main.usage_events (id TEXT PRIMARY KEY, timestamp REAL NOT NULL, payload TEXT NOT NULL)');
           this.db.exec('INSERT OR IGNORE INTO main.usage_events SELECT id,timestamp,payload FROM archive.usage_events');
