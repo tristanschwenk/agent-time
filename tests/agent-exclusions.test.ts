@@ -74,3 +74,10 @@ test('no intersecting exclusion returns the same summary object',()=>{
  assert.equal(applyAgentExclusions(s,[ex(4000,5000)]),s);
  assert.equal(applyAgentExclusions(s,[]),s);
 });
+test('child exclusion lowers agentSeconds only on day-shaped summaries',()=>{
+ const child={child:true,agentId:'a1'},childKey=agentSessionKey({...id,...child});
+ const day=summary([iv(0,3600,child)]),raw={...day,mainAgentSeconds:undefined,agentWallSeconds:undefined};
+ const d=applyAgentExclusions(day,[ex(0,1800,childKey)]),r=applyAgentExclusions(raw,[ex(0,1800,childKey)]);
+ assert.equal(d.childAgentSeconds,1800);assert.equal(d.agentSeconds,1800);
+ assert.equal(r.childAgentSeconds,1800);assert.equal(r.agentSeconds,3600);
+});

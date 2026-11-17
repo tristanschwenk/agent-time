@@ -50,7 +50,7 @@ export function applyAgentExclusions(summary:Summary,exclusions:readonly AgentTi
  const lower=(value:number,delta:number)=>Math.max(0,value-delta);
  const result:Summary={...summary,intervals,
   sessions:summary.sessions.map(s=>sessionDelta.has(s.key)?{...s,seconds:lower(s.seconds,sessionDelta.get(s.key)!)}:s),
-  agentSeconds:lower(summary.agentSeconds,main),childAgentSeconds:lower(summary.childAgentSeconds,child),elapsedSeconds:lower(summary.elapsedSeconds,elapsed)};
+  agentSeconds:lower(summary.agentSeconds,main+(summary.mainAgentSeconds!==undefined?child:0)),childAgentSeconds:lower(summary.childAgentSeconds,child),elapsedSeconds:lower(summary.elapsedSeconds,elapsed)};
  if(summary.mainAgentSeconds!==undefined)result.mainAgentSeconds=lower(summary.mainAgentSeconds,main);
  if(summary.agentWallSeconds!==undefined)result.agentWallSeconds=lower(summary.agentWallSeconds,wall);
  return result;
