@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {activityDetailSpans,trimCuts,timeInputValue,timeInputSeconds} from '../src/ui/activity-detail-target.ts';
 import type {ActivityDetailTarget} from '../src/ui/activity-detail-target.ts';
+import {unionSeconds} from '../src/capture/correlate.ts';
 test('details preserve disjoint visits and agent intervals instead of counting their gaps',()=>{
  const groups=[{start:10,end:20},{start:100,end:110}];
  assert.deepEqual(activityDetailSpans({kind:'human',date:'2026-11-12',groups} as ActivityDetailTarget),groups);
@@ -52,7 +53,7 @@ function panel(corrections:any[]=[]){
   excludeAgentTime:async(...a:any[])=>{calls.push(['exclude',...a]);if(fail)throw fail;},
   undoAgentTimeCorrection:async(...a:any[])=>{calls.push(['undo',...a]);if(fail)throw fail;}};
  const execution=reactive({key:'codex:s1',bars:[{start:BASE,end:BASE+100}]});
- const bindings={withDefaults:(p:any,d:any)=>({...d,...p}),computed,ref,watch,onMounted:()=>{},onBeforeUnmount:()=>{},nextTick:async()=>{},requestAnimationFrame:()=>1,usePagePresentation:()=>ref(true),defineProps:()=>({target:reactive({kind:'agent',date:'2026-11-12',execution})}),defineEmits:()=>(()=>{}),document:{},HTMLElement:class{},activityDetailSpans,trimCuts,timeInputValue,timeInputSeconds,useStore:()=>store,duration:(n:number)=>`${n}s`,preciseClock:(n:number)=>String(n),reviewGroupId:()=>'',reviewVisitTitle:()=>'',reviewAssignmentLabel:()=>''};
+ const bindings={withDefaults:(p:any,d:any)=>({...d,...p}),computed,ref,watch,onMounted:()=>{},onBeforeUnmount:()=>{},nextTick:async()=>{},requestAnimationFrame:()=>1,usePagePresentation:()=>ref(true),defineProps:()=>({target:reactive({kind:'agent',date:'2026-11-12',execution})}),defineEmits:()=>(()=>{}),document:{},HTMLElement:class{},activityDetailSpans,trimCuts,timeInputValue,timeInputSeconds,unionSeconds,useStore:()=>store,duration:(n:number)=>`${n}s`,preciseClock:(n:number)=>String(n),reviewGroupId:()=>'',reviewVisitTitle:()=>'',reviewAssignmentLabel:()=>''};
  const state=new Function(...Object.keys(bindings),js+';return {removeSpan,askRemove,saveEdit,startEdit,undoCorrection,editStart,editEnd,error,busy,removing,editing,activeCorrections};')(...Object.values(bindings));
  return {state,calls,store,execution,setFail:(e:Error)=>fail=e};
 }
@@ -125,4 +126,18 @@ test('open forms close when their interval disappears', async()=>{
  assert.equal(state.removing.value,null);assert.deepEqual(calls,[]);
  execution.bars.push(b);state.startEdit(b);execution.bars.splice(1,1);
  assert.equal(state.editing.value,null);
+});
+test('time edits move from the edge itself across DST and midnight',()=>{
+ const previous=process.env.TZ;process.env.TZ='Europe/Paris';
+ try{
+  // 2026-10-25: clocks go back from 03:00 CEST to 02:00 CET, so 02:10 happens twice.
+  const second=Date.parse('2026-10-25T01:20:00Z')/1000;assert.equal(timeInputValue(second),'02:20:00');
+  assert.equal(timeInputSeconds('02:10:00',second),second-600);
+  const first=Date.parse('2026-10-25T00:20:00Z')/1000;assert.equal(timeInputValue(first),'02:20:00');
+  assert.equal(timeInputSeconds('02:10:00',first),first-600);
+  // An end at midnight shown as 00:00:00 moves back into the same day.
+  const midnight=Date.parse('2026-11-12T23:00:00Z')/1000;assert.equal(timeInputSeconds('23:30:00',midnight),midnight-1800);
+  // 2026-03-29: 02:30 is skipped.
+  assert.throws(()=>timeInputSeconds('02:30:00',Date.parse('2026-03-29T00:50:00Z')/1000),/does not exist/);
+ }finally{if(previous===undefined)delete process.env.TZ;else process.env.TZ=previous;}
 });

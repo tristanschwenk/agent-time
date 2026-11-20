@@ -7,38 +7,40 @@ import {usePagePresentation} from './page-presentation.ts';
 import {activityDetailSpans,trimCuts,timeInputValue,timeInputSeconds,type ActivityDetailTarget} from './activity-detail-target.ts';
 import {reviewGroupId,reviewVisitTitle,reviewAssignmentLabel} from './review-apps.ts';
 import {duration,preciseClock} from './format.ts';
+import {unionSeconds} from '../capture/correlate.ts';
 import {useStore} from './store.ts';
 const props=withDefaults(defineProps<{target:ActivityDetailTarget;focusOnOpen?:boolean;invoker?:HTMLElement|null}>(),{focusOnOpen:true});
 const emit=defineEmits<{close:[];review:[date:string,ids:string[]]}>();
 const active=usePagePresentation(),root=ref<HTMLElement|null>(null);
 let returnFocus:HTMLElement|null=null;
-onMounted(()=>{void store?.loadAgentCorrections();returnFocus=props.invoker||(document.activeElement instanceof HTMLElement?document.activeElement:null);if(props.focusOnOpen!==false)void nextTick(()=>requestAnimationFrame(()=>{if(active.value)root.value?.focus();}));});
+onMounted(()=>{if(props.target.kind==='agent')void store.loadAgentCorrections();returnFocus=props.invoker||(document.activeElement instanceof HTMLElement?document.activeElement:null);if(props.focusOnOpen!==false)void nextTick(()=>requestAnimationFrame(()=>{if(active.value)root.value?.focus();}));});
 onBeforeUnmount(()=>{if(props.focusOnOpen!==false)void nextTick(()=>{if(active.value&&returnFocus?.isConnected)returnFocus.focus();});});
 const title=computed(()=>props.target.kind==='human'?(props.target.groups.length===1?reviewVisitTitle(props.target.groups[0]!):`${props.target.groups.length} activity visits`):props.target.kind==='agent'?'Agent execution':'Saved billing report');
 const spans=computed(()=>activityDetailSpans(props.target));
-const store=props.target.kind==='agent'?useStore():null;
+const store=useStore();
 const executionKey=computed(()=>props.target.kind==='agent'?props.target.execution.key:'');
-const activeCorrections=computed(()=>(store?.agentCorrections.value||[]).filter(item=>!item.undoneAt&&item.executionKey===executionKey.value));
-const removedSeconds=computed(()=>activeCorrections.value.reduce((sum,item)=>sum+Math.max(0,item.end-item.start),0));
+const activeCorrections=computed(()=>store.agentCorrections.value.filter(item=>!item.undoneAt&&item.executionKey===executionKey.value));
+// Overlapping corrections remove each second once.
+const removedSeconds=computed(()=>unionSeconds(activeCorrections.value.map(item=>[item.start,item.end])));
 const editing=ref<number|null>(null),removing=ref<number|null>(null),editStart=ref(''),editEnd=ref(''),error=ref(''),busy=ref(false);
 type Span={start:number;end:number};
 function startEdit(span:Span){removing.value=null;error.value='';editing.value=span.start;editStart.value=timeInputValue(span.start);editEnd.value=timeInputValue(span.end);}
 function askRemove(span:Span){editing.value=null;error.value='';removing.value=span.start;}
 watch(spans,list=>{if(editing.value!==null&&!list.some(span=>span.start===editing.value))editing.value=null;if(removing.value!==null&&!list.some(span=>span.start===removing.value))removing.value=null;},{flush:'sync'});
 async function change(work:()=>Promise<void>){if(busy.value)return false;busy.value=true;error.value='';try{await work();return true;}catch(caught){error.value=caught instanceof Error?caught.message:String(caught);return false;}finally{busy.value=false;}}
-async function removeSpan(span:Span){if(await change(()=>store!.excludeAgentTime(executionKey.value,span.start,span.end)))removing.value=null;}
+async function removeSpan(span:Span){if(await change(()=>store.excludeAgentTime(executionKey.value,span.start,span.end)))removing.value=null;}
 async function saveEdit(span:Span){
  let done=0,partial='';
  const ok=await change(async()=>{
-  const date=props.target.kind==='agent'?props.target.date:'',cuts=trimCuts(span,{start:timeInputSeconds(date,editStart.value,span.start),end:timeInputSeconds(date,editEnd.value,span.end)});
+  const cuts=trimCuts(span,{start:timeInputSeconds(editStart.value,span.start),end:timeInputSeconds(editEnd.value,span.end)});
   for(const [start,end] of cuts){
-   try{await store!.excludeAgentTime(executionKey.value,start,end);done++;}
+   try{await store.excludeAgentTime(executionKey.value,start,end);done++;}
    catch(caught){if(done>0)partial='Start trimmed; the end was not saved. Edit again.';throw caught;}
   }
  });
  if(ok||done>0){editing.value=null;if(!ok)error.value=partial;}
 }
-async function undoCorrection(item:{id:string}){await change(()=>store!.undoAgentTimeCorrection(item.id));}
+async function undoCorrection(item:{id:string}){await change(()=>store.undoAgentTimeCorrection(item.id));}
 function close(event?:KeyboardEvent){event?.stopPropagation();event?.preventDefault();emit('close');}
 function review(){if(props.target.kind==='human')emit('review',props.target.date,props.target.groups.map(reviewGroupId));}
 </script>

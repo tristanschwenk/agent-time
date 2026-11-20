@@ -569,7 +569,7 @@ export class Collector {
   }
   undoAgentTimeExclusion(id:string,date:string):Summary{
     if(!this.lockOwned&&existsSync(join(this.output,'capture.lock')))throw new Error('Review activity in the app that owns capture');
-    localDayBounds(date);this.store.undoAgentTimeExclusion(id);this.summaryCache=undefined;
+    localDayBounds(date);this.store.undoAgentTimeExclusion(id,date);this.summaryCache=undefined;
     return this.daySummary(date);
   }
   /** Returns the summary for `date` when given; otherwise for the day the split activity belongs to. */
@@ -758,8 +758,7 @@ export class Collector {
    * reports use it; everything the app polls reads bounded day summaries.
    */
   summary(maxAgeMs=0):Summary {
-    // Review edits in this process do not change the store revision.
-    const revision=`${this.store.revision()}:${this.store.dependencyRevision('review')}`;
+    const revision=this.store.revision();
     if(this.summaryCache&&(this.summaryCache.revision===revision||maxAgeMs>0&&Date.now()-this.summaryCache.at<maxAgeMs))return this.summaryCache.value;
     const events=this.store.events();
     const summary=applyAgentExclusions(applyHumanDecisions(summarize(events,{...this.summaryOptions(),alreadyUnique:true}),this.store.humanDecisions(),this.store.humanSplits()),this.store.agentTimeExclusions());

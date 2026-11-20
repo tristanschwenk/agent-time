@@ -21,10 +21,19 @@ export function trimCuts(span:Range,next:Range):Array<[number,number]>{
 }
 /** `HH:MM:SS` for a time input, in local time. */
 export function timeInputValue(seconds:number){const d=new Date(seconds*1000),p=(n:number)=>String(n).padStart(2,'0');return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
-/** Epoch seconds for a time input value on a local date; `original` is kept when the field is unchanged, so sub-second edges survive. */
-export function timeInputSeconds(date:string,value:string,original:number){
+/**
+ * Epoch seconds for a time input value, moved from `original` by the shortest
+ * wall-clock change. Working from the edge itself keeps a repeated or skipped
+ * DST hour and an end at midnight on the right side; an unchanged field keeps
+ * `original`, so sub-second edges survive.
+ */
+export function timeInputSeconds(value:string,original:number){
  if(value===timeInputValue(original))return original;
- const time=value.length===5?`${value}:00`:value,result=new Date(`${date}T${time}`).getTime()/1000;
- if(!Number.isFinite(result))throw new Error('Enter a valid time');
- return result;
+ const parts=/^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);if(!parts)throw new Error('Enter a valid time');
+ const wall=(text:string)=>{const [h,m,s=0]=text.split(':').map(Number);return h!*3600+m!*60+s;};
+ const target=Number(parts[1])*3600+Number(parts[2])*60+Number(parts[3]||0),shift=(target-wall(timeInputValue(Math.floor(original)))+86400)%86400;
+ const base=Math.floor(original)+(shift>43200?shift-86400:shift),wanted=`${parts[1]}:${parts[2]}:${parts[3]||'00'}`;
+ // A DST change between the edge and the new time moves the wall clock by an hour.
+ for(const candidate of [base,base-3600,base+3600])if(timeInputValue(candidate)===wanted)return candidate;
+ throw new Error('That time does not exist on this day');
 }

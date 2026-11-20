@@ -21,7 +21,7 @@ function installIngestionJournal(db:DatabaseSync,packed:boolean):void {
  INSERT INTO at_ingestion_highwater SELECT 1,coalesce(max(rowid),0) FROM events WHERE true ON CONFLICT(id) DO UPDATE SET max_rowid=max(max_rowid,excluded.max_rowid);
  CREATE TABLE IF NOT EXISTS at_ingestion_changes(sequence INTEGER PRIMARY KEY,kind TEXT NOT NULL,old_meta TEXT,next_meta TEXT,pairs TEXT);`);
  if(!db.prepare('PRAGMA table_info(at_ingestion_sequence)').all().some(row=>row.name==='schema_version'))db.exec('ALTER TABLE at_ingestion_sequence ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 0');
- const upgrade=Number(db.prepare('SELECT schema_version FROM at_ingestion_sequence WHERE id=1').get()!.schema_version)<3;
+ const upgrade=Number(db.prepare('SELECT schema_version FROM at_ingestion_sequence WHERE id=1').get()!.schema_version)<2;
  if(upgrade){
   const names=['event_append','event_highwater','event_replace','event_update','event_delete',...['human_decisions','human_splits','agent_time_exclusions'].flatMap(table=>['INSERT','UPDATE','DELETE'].map(action=>table+'_'+action)), 'blocks_UPDATE','blocks_DELETE'];
   for(const name of names)db.exec('DROP TRIGGER IF EXISTS at_ingestion_'+name);
@@ -55,7 +55,7 @@ function installIngestionJournal(db:DatabaseSync,packed:boolean):void {
   db.exec(`CREATE TRIGGER IF NOT EXISTS at_ingestion_agent_time_exclusions_${action} AFTER ${action} ON agent_time_exclusions BEGIN ${write('range','NULL','NULL',`json_array(${refs.map(ref=>`json_array(${ref}.start,${ref}.end)`).join(',')})`)} END;`);
  }
  if(packed)for(const action of ['UPDATE','DELETE'])db.exec(`CREATE TRIGGER IF NOT EXISTS at_ingestion_blocks_${action} BEFORE ${action} ON at_event_blocks BEGIN ${write('blocks')} END;`);
- db.exec('UPDATE at_ingestion_sequence SET schema_version=3 WHERE id=1');
+ db.exec('UPDATE at_ingestion_sequence SET schema_version=2 WHERE id=1');
 }
 export function ingestionJournalState(db:DatabaseSync):{sequence:number;firstSequence:number}{
  const sequence=Number(db.prepare('SELECT sequence FROM at_ingestion_sequence WHERE id=1').get()?.sequence??0);

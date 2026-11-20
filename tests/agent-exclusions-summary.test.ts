@@ -81,7 +81,7 @@ test('undo restores the original totals exactly',()=>withCollector('undo',c=>{
  const before=c.summaryForDate(date);
  const saved=c.store.addAgentTimeExclusion({...who,executionKey:key,date,start:at(10)+600,end:at(10)+1200});
  assert.equal(c.summaryForDate(date).agentSeconds,before.agentSeconds-600);
- c.store.undoAgentTimeExclusion(saved.id);
+ c.store.undoAgentTimeExclusion(saved.id,date);
  const after=c.summaryForDate(date);
  assert.deepEqual(agentTotals(after),agentTotals(before));
  assert.deepEqual(after.sessions.map(s=>s.seconds),before.sessions.map(s=>s.seconds));

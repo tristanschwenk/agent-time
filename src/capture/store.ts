@@ -16,7 +16,7 @@ import type {AgentTimeExclusion} from './agent-exclusions.ts';
 
 export interface ManualNote {id:string;start:number;end:number;project:string;note:string;createdAt:number;}
 export interface ReviewAction {id:string;at:number;count:number;mode:'assigned'|'unassigned'|'clear'|'split';projectPath:string|null;undoneAt:number|null;canUndo:boolean;eventIds:string[];}
-export interface ArchivePreview {id:string;archiveEvents:number;newEvents:number;eventConflicts:number;newNotes:number;noteConflicts:number;newDecisions:number;decisionConflicts:number;newSplits:number;splitConflicts:number;newReviewActions:number;reviewActionConflicts:number;newDayReviews:number;dayReviewConflicts:number;newUsageEvents:number;usageConflicts:number;newBillingProjects:number;newBillingReports:number;billingConflicts:number;}
+export interface ArchivePreview {id:string;archiveEvents:number;newEvents:number;eventConflicts:number;newNotes:number;noteConflicts:number;newDecisions:number;decisionConflicts:number;newSplits:number;splitConflicts:number;newCorrections:number;correctionConflicts:number;newReviewActions:number;reviewActionConflicts:number;newDayReviews:number;dayReviewConflicts:number;newUsageEvents:number;usageConflicts:number;newBillingProjects:number;newBillingReports:number;billingConflicts:number;}
 export function validateManualNote(value:unknown):Omit<ManualNote,'id'|'createdAt'>{
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid manual note');
  const item=value as Record<string,unknown>;
@@ -363,11 +363,14 @@ export class EventStore {
     if(!input.executionKey||!/^\d{4}-\d{2}-\d{2}$/.test(input.date)||!Number.isFinite(input.start)||!Number.isFinite(input.end)||input.end<=input.start)throw new Error('Invalid agent time exclusion');
     const saved:AgentTimeExclusion={id:randomUUID(),executionKey:input.executionKey,date:input.date,start:input.start,end:input.end,createdAt:Date.now()/1000};
     this.db.prepare('INSERT INTO agent_time_exclusions VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)').run(saved.id,saved.executionKey,input.hostId??null,input.provider??null,input.sessionId??null,input.agentId??null,input.dispatchId??null,saved.date,saved.start,saved.end,saved.createdAt);
+    this.generation++;this.nonEventGeneration++;
     return saved;
   }
-  undoAgentTimeExclusion(id:string):AgentTimeExclusion{
-    const row=this.db.prepare('UPDATE agent_time_exclusions SET undone_at=? WHERE id=? AND undone_at IS NULL RETURNING *').get(Date.now()/1000,id);
+  /** Undo only within `date`, so the caller's day summary is the one that changed. */
+  undoAgentTimeExclusion(id:string,date:string):AgentTimeExclusion{
+    const row=this.db.prepare('UPDATE agent_time_exclusions SET undone_at=? WHERE id=? AND date=? AND undone_at IS NULL RETURNING *').get(Date.now()/1000,id,date);
     if(!row)throw new Error('Correction not found');
+    this.generation++;this.nonEventGeneration++;
     return agentTimeExclusion(row);
   }
   removeManualNote(id:string):boolean{
@@ -497,6 +500,7 @@ export class EventStore {
     const mainUsage=Boolean(this.db.prepare("SELECT name FROM main.sqlite_master WHERE type='table' AND name='usage_events'").get());
     const hasHistory=Boolean(this.db.prepare("SELECT name FROM archive.sqlite_master WHERE type='table' AND name='review_actions'").get());
     const hasSplits=Boolean(this.db.prepare("SELECT name FROM archive.sqlite_master WHERE type='table' AND name='human_splits'").get());
+    const hasCorrections=Boolean(this.db.prepare("SELECT name FROM archive.sqlite_master WHERE type='table' AND name='agent_time_exclusions'").get());
     const hasDayReviews=Boolean(this.db.prepare("SELECT name FROM archive.sqlite_master WHERE type='table' AND name='day_reviews'").get());
     let eventConflicts=0;for(const row of this.db.prepare('SELECT m.payload current,a.payload archived FROM archive.events a JOIN main.events m ON m.event_id=a.event_id').iterate())if(row.current!==row.archived)eventConflicts++;
     return {...previewBillingArchive(this.db),id,archiveEvents:count('SELECT count(*) n FROM archive.events'),
@@ -508,6 +512,8 @@ export class EventStore {
       decisionConflicts:count('SELECT count(*) n FROM archive.human_decisions a JOIN main.human_decisions m ON m.start_event_id=a.start_event_id AND m.end_event_id=a.end_event_id WHERE m.mode<>a.mode OR m.project_path IS NOT a.project_path'),
       newSplits:hasSplits?count('SELECT count(*) n FROM archive.human_splits a WHERE NOT EXISTS (SELECT 1 FROM main.human_splits m WHERE m.start_event_id=a.start_event_id AND m.end_event_id=a.end_event_id)'):0,
       splitConflicts:hasSplits?count('SELECT count(*) n FROM archive.human_splits a JOIN main.human_splits m ON m.start_event_id=a.start_event_id AND m.end_event_id=a.end_event_id WHERE m.split_at<>a.split_at OR m.before_path IS NOT a.before_path OR m.after_path IS NOT a.after_path'):0,
+      newCorrections:hasCorrections?count('SELECT count(*) n FROM archive.agent_time_exclusions a WHERE NOT EXISTS (SELECT 1 FROM main.agent_time_exclusions m WHERE m.id=a.id)'):0,
+      correctionConflicts:hasCorrections?count('SELECT count(*) n FROM archive.agent_time_exclusions a JOIN main.agent_time_exclusions m ON m.id=a.id WHERE m.execution_key<>a.execution_key OR m.start<>a.start OR m.end<>a.end OR m.undone_at IS NOT a.undone_at'):0,
       newReviewActions:hasHistory?count('SELECT count(*) n FROM archive.review_actions a WHERE NOT EXISTS (SELECT 1 FROM main.review_actions m WHERE m.id=a.id)'):0,
       reviewActionConflicts:hasHistory?count('SELECT count(*) n FROM archive.review_actions a JOIN main.review_actions m ON m.id=a.id WHERE m.before_json<>a.before_json OR m.after_json<>a.after_json OR m.undone_at IS NOT a.undone_at'):0,
       newDayReviews:hasDayReviews?count('SELECT count(*) n FROM archive.day_reviews a WHERE NOT EXISTS (SELECT 1 FROM main.day_reviews m WHERE m.date=a.date)'):0,
